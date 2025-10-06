@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//var/folders/fx/mxl8536d3cvcn2n_1gk09t8h0000gp/T/DMD57324DFF-9CB2-4D8F-B8D2-0833EF62E710/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

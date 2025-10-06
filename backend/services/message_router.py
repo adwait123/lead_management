@@ -1,0 +1,378 @@
+"""
+Message Router Service for handling conversation routing to active agent sessions
+"""
+import logging
+from typing import Dict, Any, Optional, Tuple
+from sqlalchemy.orm import Session
+from datetime import datetime
+
+from models.agent_session import AgentSession
+from models.agent import Agent
+from models.lead import Lead
+
+logger = logging.getLogger(__name__)
+
+
+class MessageRouter:
+    """Service for routing messages to appropriate agent sessions"""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def route_message(self, lead_id: int, message: str, message_type: str = "text",
+                     metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Route an incoming message to the appropriate agent session
+
+        Args:
+            lead_id: ID of the lead sending the message
+            message: The message content
+            message_type: Type of message (text, voice, etc.)
+            metadata: Additional metadata about the message
+
+        Returns:
+            Dictionary with routing information and next steps
+        """
+        try:
+            # Find active session for this lead
+            active_session = self._get_active_session(lead_id)
+
+            if active_session:
+                # Route to existing session
+                result = self._route_to_existing_session(active_session, message, message_type, metadata)
+            else:
+                # No active session - determine if we should create one
+                result = self._handle_new_conversation(lead_id, message, message_type, metadata)
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error routing message for lead {lead_id}: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "routing_decision": "error",
+                "should_respond": False
+            }
+
+    def _get_active_session(self, lead_id: int) -> Optional[AgentSession]:
+        """Get the active agent session for a lead"""
+        return self.db.query(AgentSession).filter(
+            AgentSession.lead_id == lead_id,
+            AgentSession.session_status == "active"
+        ).first()
+
+    def _route_to_existing_session(self, session: AgentSession, message: str,
+                                 message_type: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Route message to an existing active session"""
+
+        # Update session message statistics
+        session.update_message_stats(from_agent=False)
+
+        # Check if session should be escalated due to message count
+        if session.should_escalate():
+            return self._escalate_session(session, "max_message_count_reached")
+
+        # Check if session has timed out
+        if session.is_timeout_eligible():
+            return self._timeout_session(session)
+
+        try:
+            self.db.commit()
+
+            # Get agent information
+            agent = self.db.query(Agent).filter(Agent.id == session.agent_id).first()
+            lead = self.db.query(Lead).filter(Lead.id == session.lead_id).first()
+
+            return {
+                "success": True,
+                "routing_decision": "existing_session",
+                "session_id": session.id,
+                "agent_id": session.agent_id,
+                "agent_name": agent.name if agent else "Unknown",
+                "lead_name": lead.name if lead else "Unknown",
+                "message_count": session.message_count,
+                "session_goal": session.session_goal,
+                "should_respond": True,
+                "agent_context": {
+                    "session_goal": session.session_goal,
+                    "message_count": session.message_count,
+                    "session_created": session.created_at.isoformat() if session.created_at else None,
+                    "initial_context": session.initial_context,
+                    "trigger_type": session.trigger_type
+                }
+            }
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error updating session {session.id}: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "routing_decision": "error",
+                "should_respond": False
+            }
+
+    def _handle_new_conversation(self, lead_id: int, message: str,
+                               message_type: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Handle a new conversation when no active session exists"""
+
+        # Check if this should trigger a new agent session
+        # For now, we'll look for agents with "new_lead" or general triggers
+        potential_agents = self._find_agents_for_new_conversation(lead_id)
+
+        if not potential_agents:
+            return {
+                "success": True,
+                "routing_decision": "no_agent_available",
+                "should_respond": False,
+                "message": "No agents configured to handle new conversations"
+            }
+
+        # Use the first available agent (could be enhanced with priority logic)
+        agent = potential_agents[0]
+
+        # Create new session
+        try:
+            session = AgentSession(
+                agent_id=agent.id,
+                lead_id=lead_id,
+                trigger_type="message_received",  # Different from workflow triggers
+                session_goal=self._determine_session_goal_from_message(message, agent),
+                initial_context={
+                    "first_message": message,
+                    "message_type": message_type,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "metadata": metadata or {}
+                }
+            )
+
+            self.db.add(session)
+            self.db.commit()
+            self.db.refresh(session)
+
+            # Update with first message
+            session.update_message_stats(from_agent=False)
+            self.db.commit()
+
+            lead = self.db.query(Lead).filter(Lead.id == lead_id).first()
+
+            logger.info(f"Created new session {session.id} for lead {lead_id} with agent {agent.id}")
+
+            return {
+                "success": True,
+                "routing_decision": "new_session_created",
+                "session_id": session.id,
+                "agent_id": agent.id,
+                "agent_name": agent.name,
+                "lead_name": lead.name if lead else "Unknown",
+                "message_count": session.message_count,
+                "session_goal": session.session_goal,
+                "should_respond": True,
+                "agent_context": {
+                    "session_goal": session.session_goal,
+                    "message_count": session.message_count,
+                    "session_created": session.created_at.isoformat() if session.created_at else None,
+                    "initial_context": session.initial_context,
+                    "trigger_type": session.trigger_type,
+                    "is_new_session": True
+                }
+            }
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error creating new session: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "routing_decision": "error",
+                "should_respond": False
+            }
+
+    def _find_agents_for_new_conversation(self, lead_id: int) -> list[Agent]:
+        """Find agents that can handle new conversations"""
+
+        # Get all active agents
+        agents = self.db.query(Agent).filter(Agent.is_active == True).all()
+
+        suitable_agents = []
+
+        for agent in agents:
+            # Check if agent has triggers that would handle new conversations
+            if self._agent_can_handle_new_conversation(agent):
+                suitable_agents.append(agent)
+
+        # Sort by priority (could be enhanced with agent ranking logic)
+        # For now, prioritize by use case
+        priority_order = ["general_sales", "lead_qualification", "customer_support"]
+
+        def get_priority(agent):
+            try:
+                return priority_order.index(agent.use_case)
+            except ValueError:
+                return len(priority_order)  # Put unknown use cases at the end
+
+        suitable_agents.sort(key=get_priority)
+
+        return suitable_agents
+
+    def _agent_can_handle_new_conversation(self, agent: Agent) -> bool:
+        """Check if an agent can handle new conversations based on its triggers"""
+
+        if not agent.triggers:
+            # If no specific triggers, assume it can handle general conversations
+            return True
+
+        # Check for conversation-related triggers
+        conversation_triggers = {"new_lead", "form_submission", "website_visit", "general"}
+
+        for trigger in agent.triggers:
+            if isinstance(trigger, dict):
+                trigger_event = trigger.get('event') or trigger.get('type')
+            else:
+                trigger_event = trigger
+
+            if trigger_event in conversation_triggers:
+                return True
+
+        return False
+
+    def _determine_session_goal_from_message(self, message: str, agent: Agent) -> str:
+        """Determine session goal based on the first message and agent type"""
+
+        message_lower = message.lower()
+
+        # Simple keyword-based goal detection (could be enhanced with NLP)
+        if any(word in message_lower for word in ["price", "cost", "quote", "estimate"]):
+            return "provide_pricing"
+        elif any(word in message_lower for word in ["schedule", "appointment", "meeting", "call"]):
+            return "book_appointment"
+        elif any(word in message_lower for word in ["support", "help", "problem", "issue"]):
+            return "provide_support"
+        elif any(word in message_lower for word in ["info", "information", "learn", "tell me"]):
+            return "provide_information"
+        else:
+            # Default based on agent use case
+            use_case_goals = {
+                "lead_qualification": "qualify_lead",
+                "customer_support": "provide_support",
+                "general_sales": "close_lead",
+                "appointment_booking": "book_appointment"
+            }
+            return use_case_goals.get(agent.use_case, "engage_lead")
+
+    def _escalate_session(self, session: AgentSession, reason: str) -> Dict[str, Any]:
+        """Escalate a session that has reached limits"""
+
+        session.session_status = "escalated"
+        session.completion_reason = reason
+        session.ended_at = datetime.utcnow()
+
+        try:
+            self.db.commit()
+            logger.info(f"Escalated session {session.id} due to: {reason}")
+
+            return {
+                "success": True,
+                "routing_decision": "session_escalated",
+                "session_id": session.id,
+                "escalation_reason": reason,
+                "should_respond": True,
+                "escalation_message": "This conversation has been escalated to a human agent who will assist you shortly."
+            }
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error escalating session {session.id}: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "routing_decision": "error",
+                "should_respond": False
+            }
+
+    def _timeout_session(self, session: AgentSession) -> Dict[str, Any]:
+        """Handle a session that has timed out"""
+
+        session.session_status = "timeout"
+        session.completion_reason = "inactivity_timeout"
+        session.ended_at = datetime.utcnow()
+
+        try:
+            self.db.commit()
+            logger.info(f"Timed out session {session.id} due to inactivity")
+
+            # Start a new session for this message
+            return self._handle_new_conversation(
+                session.lead_id,
+                "Session resumed after timeout",
+                "text"
+            )
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error timing out session {session.id}: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "routing_decision": "error",
+                "should_respond": False
+            }
+
+    def get_session_context(self, session_id: int) -> Optional[Dict[str, Any]]:
+        """Get context information for an active session"""
+
+        session = self.db.query(AgentSession).filter(AgentSession.id == session_id).first()
+        if not session:
+            return None
+
+        agent = self.db.query(Agent).filter(Agent.id == session.agent_id).first()
+        lead = self.db.query(Lead).filter(Lead.id == session.lead_id).first()
+
+        return {
+            "session_id": session.id,
+            "agent": {
+                "id": agent.id if agent else None,
+                "name": agent.name if agent else "Unknown",
+                "use_case": agent.use_case if agent else None,
+                "prompt_template": agent.prompt_template if agent else None
+            },
+            "lead": {
+                "id": lead.id if lead else None,
+                "name": lead.name if lead else "Unknown",
+                "email": lead.email if lead else None,
+                "company": lead.company if lead else None
+            },
+            "session": {
+                "goal": session.session_goal,
+                "message_count": session.message_count,
+                "created_at": session.created_at.isoformat() if session.created_at else None,
+                "initial_context": session.initial_context,
+                "trigger_type": session.trigger_type
+            }
+        }
+
+    def update_agent_response(self, session_id: int, response: str, response_metadata: Dict[str, Any] = None) -> bool:
+        """Update session after agent sends a response"""
+
+        session = self.db.query(AgentSession).filter(AgentSession.id == session_id).first()
+        if not session:
+            return False
+
+        try:
+            # Update message stats for agent response
+            session.update_message_stats(from_agent=True)
+
+            # Could store response metadata if needed
+            if response_metadata:
+                current_metadata = session.session_metadata or {}
+                current_metadata.update(response_metadata)
+                session.session_metadata = current_metadata
+
+            self.db.commit()
+            return True
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error updating agent response for session {session_id}: {str(e)}")
+            return False

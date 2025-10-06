@@ -1,0 +1,278 @@
+"""
+Workflow Service for handling agent trigger detection and session management
+"""
+import logging
+from typing import Dict, Any, List, Optional
+from sqlalchemy.orm import Session
+from datetime import datetime
+
+from models.agent import Agent
+from models.lead import Lead
+from models.agent_session import AgentSession
+
+logger = logging.getLogger(__name__)
+
+
+class WorkflowService:
+    """Service for managing workflow triggers and agent session creation"""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def detect_and_execute_triggers(self, event_type: str, event_data: Dict[str, Any]) -> List[int]:
+        """
+        Detect matching triggers and execute them by creating agent sessions
+
+        Args:
+            event_type: Type of event (new_lead, form_submission, etc.)
+            event_data: Data associated with the event (lead_id, form_data, etc.)
+
+        Returns:
+            List of created session IDs
+        """
+        logger.info(f"Processing event: {event_type} with data: {event_data}")
+
+        # Find agents with matching triggers
+        matching_agents = self._find_matching_agents(event_type)
+
+        if not matching_agents:
+            logger.info(f"No agents found with trigger for event type: {event_type}")
+            return []
+
+        created_sessions = []
+
+        for agent in matching_agents:
+            try:
+                session_id = self._create_agent_session(agent, event_type, event_data)
+                if session_id:
+                    created_sessions.append(session_id)
+                    logger.info(f"Created session {session_id} for agent {agent.id} on event {event_type}")
+            except Exception as e:
+                logger.error(f"Failed to create session for agent {agent.id}: {str(e)}")
+                continue
+
+        return created_sessions
+
+    def _find_matching_agents(self, event_type: str) -> List[Agent]:
+        """Find agents that have triggers matching the event type"""
+
+        # Get all active agents
+        agents = self.db.query(Agent).filter(Agent.is_active == True).all()
+
+        matching_agents = []
+
+        for agent in agents:
+            if self._agent_has_matching_trigger(agent, event_type):
+                matching_agents.append(agent)
+
+        return matching_agents
+
+    def _agent_has_matching_trigger(self, agent: Agent, event_type: str) -> bool:
+        """Check if an agent has a trigger that matches the event type"""
+
+        if not agent.triggers:
+            return False
+
+        for trigger in agent.triggers:
+            # Handle different trigger formats
+            if isinstance(trigger, dict):
+                trigger_event = trigger.get('event') or trigger.get('type')
+            else:
+                trigger_event = trigger
+
+            if trigger_event == event_type:
+                # Check if trigger has additional conditions
+                if isinstance(trigger, dict) and 'condition' in trigger:
+                    # TODO: Implement condition evaluation logic
+                    # For now, we'll assume conditions pass
+                    logger.debug(f"Trigger condition found but not evaluated: {trigger.get('condition')}")
+
+                return True
+
+        return False
+
+    def _create_agent_session(self, agent: Agent, event_type: str, event_data: Dict[str, Any]) -> Optional[int]:
+        """Create an agent session for the triggered agent"""
+
+        # Extract lead_id from event data
+        lead_id = event_data.get('lead_id')
+        if not lead_id:
+            logger.error(f"No lead_id found in event data for {event_type}")
+            return None
+
+        # Validate lead exists
+        lead = self.db.query(Lead).filter(Lead.id == lead_id).first()
+        if not lead:
+            logger.error(f"Lead {lead_id} not found")
+            return None
+
+        # Check if lead already has an active session
+        existing_session = self.db.query(AgentSession).filter(
+            AgentSession.lead_id == lead_id,
+            AgentSession.session_status == "active"
+        ).first()
+
+        if existing_session:
+            logger.warning(f"Lead {lead_id} already has active session {existing_session.id}")
+            return None
+
+        # Determine session goal based on agent type/use case
+        session_goal = self._determine_session_goal(agent, event_type)
+
+        # Create the session
+        session = AgentSession(
+            agent_id=agent.id,
+            lead_id=lead_id,
+            trigger_type=event_type,
+            session_goal=session_goal,
+            initial_context=event_data,
+            auto_timeout_hours=getattr(agent, 'auto_timeout_hours', 48),
+            max_message_count=getattr(agent, 'max_message_count', 100)
+        )
+
+        try:
+            self.db.add(session)
+            self.db.commit()
+            self.db.refresh(session)
+
+            return session.id
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Database error creating session: {str(e)}")
+            return None
+
+    def _determine_session_goal(self, agent: Agent, event_type: str) -> str:
+        """Determine session goal based on agent and trigger type"""
+
+        # Map agent use cases to session goals
+        use_case_goals = {
+            "lead_qualification": "qualify_lead",
+            "customer_support": "provide_support",
+            "general_sales": "close_lead",
+            "appointment_booking": "book_appointment",
+            "follow_up": "follow_up_lead"
+        }
+
+        # Map event types to session goals
+        event_type_goals = {
+            "new_lead": "qualify_lead",
+            "form_submission": "qualify_lead",
+            "email_opened": "follow_up_lead",
+            "website_visit": "engage_visitor",
+            "meeting_scheduled": "prepare_meeting",
+            "support_ticket": "provide_support"
+        }
+
+        # Use agent use case first, then event type, then default
+        goal = use_case_goals.get(agent.use_case)
+        if not goal:
+            goal = event_type_goals.get(event_type, "engage_lead")
+
+        return goal
+
+    def handle_lead_created(self, lead_id: int, source: str = None, form_data: Dict[str, Any] = None) -> List[int]:
+        """Handle new lead creation event"""
+
+        event_data = {
+            "lead_id": lead_id,
+            "source": source,
+            "form_data": form_data or {},
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        return self.detect_and_execute_triggers("new_lead", event_data)
+
+    def handle_form_submission(self, lead_id: int, form_type: str, form_data: Dict[str, Any]) -> List[int]:
+        """Handle form submission event"""
+
+        event_data = {
+            "lead_id": lead_id,
+            "form_type": form_type,
+            "form_data": form_data,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        return self.detect_and_execute_triggers("form_submission", event_data)
+
+    def handle_email_opened(self, lead_id: int, email_id: str = None) -> List[int]:
+        """Handle email opened event"""
+
+        event_data = {
+            "lead_id": lead_id,
+            "email_id": email_id,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        return self.detect_and_execute_triggers("email_opened", event_data)
+
+    def handle_website_visit(self, lead_id: int, page_url: str = None, duration: int = None) -> List[int]:
+        """Handle website visit event"""
+
+        event_data = {
+            "lead_id": lead_id,
+            "page_url": page_url,
+            "duration": duration,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        return self.detect_and_execute_triggers("website_visit", event_data)
+
+    def handle_meeting_scheduled(self, lead_id: int, meeting_time: str, meeting_type: str = None) -> List[int]:
+        """Handle meeting scheduled event"""
+
+        event_data = {
+            "lead_id": lead_id,
+            "meeting_time": meeting_time,
+            "meeting_type": meeting_type,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        return self.detect_and_execute_triggers("meeting_scheduled", event_data)
+
+    def handle_support_ticket(self, lead_id: int, ticket_id: str, issue_type: str = None) -> List[int]:
+        """Handle support ticket creation event"""
+
+        event_data = {
+            "lead_id": lead_id,
+            "ticket_id": ticket_id,
+            "issue_type": issue_type,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        return self.detect_and_execute_triggers("support_ticket", event_data)
+
+    def get_agent_trigger_summary(self, agent_id: int) -> Dict[str, Any]:
+        """Get summary of triggers configured for an agent"""
+
+        agent = self.db.query(Agent).filter(Agent.id == agent_id).first()
+        if not agent:
+            return {"error": "Agent not found"}
+
+        trigger_summary = {
+            "agent_id": agent_id,
+            "agent_name": agent.name,
+            "is_active": agent.is_active,
+            "triggers": [],
+            "trigger_count": 0
+        }
+
+        if agent.triggers:
+            for trigger in agent.triggers:
+                if isinstance(trigger, dict):
+                    trigger_info = {
+                        "event": trigger.get('event') or trigger.get('type'),
+                        "condition": trigger.get('condition'),
+                        "active": trigger.get('active', True)
+                    }
+                else:
+                    trigger_info = {
+                        "event": trigger,
+                        "condition": None,
+                        "active": True
+                    }
+
+                trigger_summary["triggers"].append(trigger_info)
+
+            trigger_summary["trigger_count"] = len(agent.triggers)
+
+        return trigger_summary
