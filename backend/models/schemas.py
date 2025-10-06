@@ -1,7 +1,7 @@
 """
 Pydantic schemas for request/response validation
 """
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import json
@@ -57,7 +57,7 @@ class LeadResponseSchema(LeadBaseSchema):
     interaction_history: List[Dict[str, Any]] = []
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 class LeadListResponseSchema(BaseModel):
     leads: List[LeadResponseSchema]
@@ -194,10 +194,9 @@ class AgentResponseSchema(AgentBaseSchema):
     created_by: str = "system"
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
-    @field_validator('knowledge', mode='before')
-    @classmethod
+    @validator('knowledge', pre=True)
     def parse_knowledge(cls, v):
         if isinstance(v, str):
             try:
@@ -206,8 +205,7 @@ class AgentResponseSchema(AgentBaseSchema):
                 return []
         return v if v is not None else []
 
-    @field_validator('enabled_tools', mode='before')
-    @classmethod
+    @validator('enabled_tools', pre=True)
     def parse_enabled_tools(cls, v):
         if isinstance(v, str):
             try:
@@ -216,8 +214,7 @@ class AgentResponseSchema(AgentBaseSchema):
                 return []
         return v if v is not None else []
 
-    @field_validator('tool_configs', mode='before')
-    @classmethod
+    @validator('tool_configs', pre=True)
     def parse_tool_configs(cls, v):
         if isinstance(v, str):
             try:
@@ -226,8 +223,7 @@ class AgentResponseSchema(AgentBaseSchema):
                 return {}
         return v if v is not None else {}
 
-    @field_validator('conversation_settings', mode='before')
-    @classmethod
+    @validator('conversation_settings', pre=True)
     def parse_conversation_settings(cls, v):
         if isinstance(v, str):
             try:
@@ -236,8 +232,7 @@ class AgentResponseSchema(AgentBaseSchema):
                 return {}
         return v if v is not None else {}
 
-    @field_validator('triggers', mode='before')
-    @classmethod
+    @validator('triggers', pre=True)
     def parse_triggers(cls, v):
         if isinstance(v, str):
             try:
@@ -246,8 +241,7 @@ class AgentResponseSchema(AgentBaseSchema):
                 return []
         return v if v is not None else []
 
-    @field_validator('actions', mode='before')
-    @classmethod
+    @validator('actions', pre=True)
     def parse_actions(cls, v):
         if isinstance(v, str):
             try:
@@ -256,8 +250,7 @@ class AgentResponseSchema(AgentBaseSchema):
                 return []
         return v if v is not None else []
 
-    @field_validator('workflow_steps', mode='before')
-    @classmethod
+    @validator('workflow_steps', pre=True)
     def parse_workflow_steps(cls, v):
         if isinstance(v, str):
             try:
@@ -266,8 +259,7 @@ class AgentResponseSchema(AgentBaseSchema):
                 return []
         return v if v is not None else []
 
-    @field_validator('integrations', mode='before')
-    @classmethod
+    @validator('integrations', pre=True)
     def parse_integrations(cls, v):
         if isinstance(v, str):
             try:
@@ -276,8 +268,7 @@ class AgentResponseSchema(AgentBaseSchema):
                 return []
         return v if v is not None else []
 
-    @field_validator('sample_conversations', mode='before')
-    @classmethod
+    @validator('sample_conversations', pre=True)
     def parse_sample_conversations(cls, v):
         if isinstance(v, str):
             try:
@@ -286,8 +277,7 @@ class AgentResponseSchema(AgentBaseSchema):
                 return []
         return v if v is not None else []
 
-    @field_validator('personality_traits', mode='before')
-    @classmethod
+    @validator('personality_traits', pre=True)
     def parse_personality_traits(cls, v):
         if isinstance(v, str):
             try:
@@ -296,8 +286,7 @@ class AgentResponseSchema(AgentBaseSchema):
                 return []
         return v if v is not None else []
 
-    @field_validator('prompt_variables', mode='before')
-    @classmethod
+    @validator('prompt_variables', pre=True)
     def parse_prompt_variables(cls, v):
         if isinstance(v, str):
             try:
@@ -363,7 +352,7 @@ class AgentSessionResponseSchema(BaseModel):
     ended_at: Optional[str]
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 class AgentSessionListResponseSchema(BaseModel):
     sessions: List[AgentSessionResponseSchema]
