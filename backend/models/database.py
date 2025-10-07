@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 import os
 
 # Database URL - using SQLite for development
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./leads.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./ailead.db")
 
 # Create engine
 engine = create_engine(

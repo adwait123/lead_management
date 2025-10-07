@@ -11,8 +11,7 @@ import { AIInstructionsTab } from './tabs/AIInstructionsTab';
 const configTabs = [
   { id: 'basics', title: 'Agent Basics', component: AgentBasicsTab },
   { id: 'knowledge', title: 'Knowledge', component: KnowledgeBaseTab },
-  { id: 'instructions', title: 'AI Instructions', component: AIInstructionsTab },
-  { id: 'test', title: 'Test Agent', component: null } // We'll render test section inline
+  { id: 'instructions', title: 'AI Instructions', component: AIInstructionsTab }
 ];
 
 function HatchEditContent() {
