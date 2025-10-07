@@ -373,13 +373,21 @@ export function AIInstructionsTab() {
   // Load starter prompt if empty
   useEffect(() => {
     console.log(`🔄 useEffect triggered - prompt: ${prompt ? 'exists' : 'empty'}, agentName: ${wizardData.persona?.agentName}, useCase: ${wizardData.useCase}`);
+    console.log(`🔍 Full wizardData object:`, wizardData);
+    console.log(`🎯 Alternative useCase paths:`, {
+      'wizardData.useCase': wizardData.useCase,
+      'wizardData.selectedTemplate?.id': wizardData.selectedTemplate?.id,
+      'wizardData.selectedTemplate?.useCase': wizardData.selectedTemplate?.useCase
+    });
 
-    if (!prompt && (wizardData.persona?.agentName || wizardData.useCase)) {
+    const useCase = wizardData.useCase || wizardData.selectedTemplate?.id;
+    console.log(`🎲 Resolved useCase: ${useCase}`);
+
+    if (!prompt && (wizardData.persona?.agentName || useCase)) {
       console.log(`✅ Conditions met, loading prompt...`);
-      const currentUseCase = wizardData.useCase; // Capture useCase value at this moment
       const loadPrompt = async () => {
-        console.log(`🎯 Captured useCase for prompt generation: ${currentUseCase}`);
-        const starter = await generateStarterPromptWithUseCase(currentUseCase);
+        console.log(`🎯 Using useCase for prompt generation: ${useCase}`);
+        const starter = await generateStarterPromptWithUseCase(useCase);
         console.log(`📝 Setting prompt in state and wizard data...`);
         setPrompt(starter);
         updateWizardData({ instructions: { ...wizardData.instructions, systemPrompt: starter } });
@@ -388,7 +396,7 @@ export function AIInstructionsTab() {
     } else {
       console.log(`❌ Conditions not met for loading prompt`);
     }
-  }, [wizardData.persona?.agentName, wizardData.useCase]); // Trigger on either persona or useCase
+  }, [wizardData.persona?.agentName, wizardData.useCase, wizardData.selectedTemplate?.id]); // Watch both paths
 
   // Render slash commands with special styling in the preview
   const renderPromptPreview = () => {
