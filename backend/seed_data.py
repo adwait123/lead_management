@@ -57,44 +57,48 @@ def create_realistic_leads():
         "Basement Waterproofing", "Chimney Cleaning"
     ]
 
-    sources = ["Yelp", "Angie's List", "HomeAdvisor", "Thumbtack", "Google Local", "Nextdoor"]
+    sources = ["Yelp", "Yelp", "Yelp", "Yelp", "Angie's List", "HomeAdvisor", "Thumbtack", "Google Local", "Nextdoor"]  # More Yelp leads
     statuses = ["new", "contacted", "qualified", "won", "lost"]
 
     # Note templates
     note_templates = [
-        "Initial contact made via phone. Very interested in our services.",
-        "Sent proposal document. Waiting for review meeting.",
-        "Had a great discovery call. They need implementation by Q1.",
-        "Follow-up scheduled for next week to discuss budget.",
-        "Decision maker will be back from vacation next Monday.",
-        "Competitor comparison requested. Sent detailed feature matrix.",
-        "Technical demo scheduled for Friday 2 PM.",
-        "Budget approved! Moving to contract negotiation.",
-        "Requested additional references from similar industry clients.",
-        "Project timeline discussed. They prefer phased approach."
+        "Responded to Yelp quote request within 30 minutes. Very responsive homeowner.",
+        "Scheduled in-home estimate for next Tuesday at 2 PM.",
+        "Homeowner comparing quotes from 3 contractors. Emphasized our 5-star Yelp rating.",
+        "Follow-up call scheduled to discuss project timeline and budget details.",
+        "Homeowner mentioned they found us through Yelp reviews. Great referral source!",
+        "Sent detailed estimate via email. Waiting for their decision by Friday.",
+        "Project approved! Scheduling work to begin next month.",
+        "Homeowner wants to add additional scope to original Yelp request.",
+        "Left voicemail with project details. Yelp leads are very active.",
+        "Competitor comparison requested. Highlighted our local expertise and licensing."
     ]
 
     # Interaction templates
     interaction_templates = [
         {
-            "type": "email",
-            "content": "Sent welcome email with company overview and next steps.",
+            "type": "yelp_response",
+            "content": "Responded to Yelp quote request with initial pricing and availability.",
         },
         {
-            "type": "call",
-            "content": "15-minute discovery call to understand their business needs.",
+            "type": "phone_call",
+            "content": "Called homeowner to discuss project details and schedule estimate.",
         },
         {
-            "type": "demo",
-            "content": "Product demonstration focusing on their key requirements.",
+            "type": "estimate_visit",
+            "content": "Conducted in-home estimate and provided detailed quote.",
         },
         {
-            "type": "follow_up",
-            "content": "Follow-up email with proposal and pricing information.",
+            "type": "follow_up_email",
+            "content": "Follow-up email with written estimate and project timeline.",
         },
         {
-            "type": "meeting",
-            "content": "In-person meeting with decision makers to discuss implementation.",
+            "type": "contract_discussion",
+            "content": "Discussed contract terms and project start date with homeowner.",
+        },
+        {
+            "type": "yelp_message",
+            "content": "Exchanged messages through Yelp platform to clarify project scope.",
         }
     ]
 
@@ -146,8 +150,8 @@ def create_realistic_leads():
                 interaction.update({
                     "id": j + 1,
                     "timestamp": interaction_date.isoformat(),
-                    "agent_id": random.randint(1, 3),
-                    "agent_name": random.choice(["Sales Bot", "Support Agent", "Lead Qualifier"])
+                    "agent_id": random.randint(1, 5),
+                    "agent_name": random.choice(["Yelp Quote Specialist", "HomeAdvisor Pro Assistant", "Follow-up Champion", "Support Hero", "Demo Scheduler"])
                 })
                 interactions.append(interaction)
 

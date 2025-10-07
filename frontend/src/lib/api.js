@@ -1,35 +1,16 @@
 import axios from 'axios'
 
-// Create axios instance with dynamic URL resolution
-const getApiUrl = () => {
-  const hostname = window.location.hostname
-  const apiUrl = hostname.includes('onrender.com')
-    ? 'https://lead-management-j828.onrender.com'
-    : import.meta.env.VITE_API_URL || 'http://localhost:8000'
-
-  console.log('API URL Detection:', {
-    hostname,
-    isRender: hostname.includes('onrender.com'),
-    selectedUrl: apiUrl,
-    envVar: import.meta.env.VITE_API_URL
-  })
-
-  return apiUrl
-}
-
 const api = axios.create({
+  baseURL: 'https://lead-management-j828.onrender.com',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
-// Request interceptor for dynamic baseURL and auth tokens
+// Request interceptor for auth tokens
 api.interceptors.request.use(
   (config) => {
-    // Set the baseURL dynamically for each request
-    config.baseURL = getApiUrl()
-
     // Add auth token if available
     // const token = localStorage.getItem('token')
     // if (token) {
