@@ -1,8 +1,17 @@
 import axios from 'axios'
 
 // Create axios instance with default config
+const getApiUrl = () => {
+  // Check if we're in production (Render deployment)
+  if (window.location.hostname.includes('onrender.com')) {
+    return 'https://lead-management-j828.onrender.com'
+  }
+  // Use environment variable or fallback to localhost for development
+  return import.meta.env.VITE_API_URL || 'http://localhost:8000'
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseURL: getApiUrl(),
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
