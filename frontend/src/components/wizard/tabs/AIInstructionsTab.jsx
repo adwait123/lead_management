@@ -20,6 +20,30 @@ export function AIInstructionsTab() {
   const [isGenerating, setIsGenerating] = useState(false);
   const textareaRef = useRef(null);
 
+  // Debug component mounting and wizard data
+  console.log(`🏗️ AIInstructionsTab mounted/updated`);
+  console.log(`📊 Component wizard data:`, wizardData);
+
+  // Check for useCase in URL params or localStorage as fallback
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlUseCase = urlParams.get('useCase');
+  const storedTemplate = localStorage.getItem('selectedTemplate');
+  let storedUseCase = null;
+
+  try {
+    if (storedTemplate) {
+      const template = JSON.parse(storedTemplate);
+      storedUseCase = template.id;
+    }
+  } catch (e) {
+    console.log('Could not parse stored template');
+  }
+
+  console.log(`🔍 Alternative useCase sources:`, {
+    url: urlUseCase,
+    localStorage: storedUseCase
+  });
+
   // Get tool configurations from wizard data
   const toolConfigs = wizardData.tools || {};
 
@@ -380,8 +404,8 @@ export function AIInstructionsTab() {
       'wizardData.selectedTemplate?.useCase': wizardData.selectedTemplate?.useCase
     });
 
-    const useCase = wizardData.useCase || wizardData.selectedTemplate?.id;
-    console.log(`🎲 Resolved useCase: ${useCase}`);
+    const useCase = wizardData.useCase || wizardData.selectedTemplate?.id || urlUseCase || storedUseCase;
+    console.log(`🎲 Resolved useCase: ${useCase} (from ${wizardData.useCase ? 'wizardData.useCase' : wizardData.selectedTemplate?.id ? 'selectedTemplate.id' : urlUseCase ? 'URL param' : storedUseCase ? 'localStorage' : 'none'})`);
 
     if (!prompt && (wizardData.persona?.agentName || useCase)) {
       console.log(`✅ Conditions met, loading prompt...`);
