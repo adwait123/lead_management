@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const HatchWizardContext = createContext();
 
@@ -391,9 +392,11 @@ export const HatchWizardProvider = ({ children }) => {
       resetWizard();
 
       // Navigate to agents page to see the new agent
-      if (typeof window !== 'undefined') {
-        window.location.href = '/agents';
-      }
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          window.location.href = '/agents';
+        }
+      }, 1000);
 
       return createdAgent;
 
