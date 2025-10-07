@@ -19,99 +19,142 @@ def create_realistic_agents():
 
     agents_data = [
         {
-            "name": "Sales Bot",
-            "description": "Friendly AI assistant specialized in lead qualification and initial sales conversations",
-            "type": "conversational",
-            "prompt_template": "You are a friendly and professional sales assistant. Your goal is to help potential customers understand our services and qualify their needs. Always be helpful, ask relevant questions, and guide them toward scheduling a consultation.",
-            "personality": "friendly",
-            "response_style": "concise",
-            "model": "gpt-3.5-turbo",
-            "temperature": "0.7",
-            "max_tokens": 400,
-            "triggers": [
-                {"event": "new_lead", "condition": "source=website"},
-                {"event": "form_submission", "condition": "interest=sales"}
-            ],
-            "actions": [
-                {"type": "send_email", "template": "welcome_email"},
-                {"type": "schedule_follow_up", "delay": "24h"}
-            ],
-            "workflow_steps": [
-                {"step": 1, "action": "greet_visitor", "description": "Welcome the visitor warmly"},
-                {"step": 2, "action": "qualify_needs", "description": "Ask about their business needs"},
-                {"step": 3, "action": "present_solutions", "description": "Suggest relevant services"},
-                {"step": 4, "action": "schedule_call", "description": "Offer to schedule a consultation"}
-            ],
-            "integrations": [
-                {"service": "calendly", "config": {"calendar_id": "sales-team"}},
-                {"service": "mailchimp", "config": {"list_id": "prospects"}}
-            ],
-            "sample_conversations": [
-                {
-                    "id": 1,
-                    "messages": [
-                        {"role": "user", "content": "I'm interested in your CRM services"},
-                        {"role": "assistant", "content": "Great! I'd love to help you find the perfect CRM solution. Can you tell me a bit about your business size and current challenges?"}
-                    ]
-                }
-            ],
-            "total_interactions": 127,
-            "success_rate": "85.5",
-            "avg_response_time": "1.2"
-        },
-        {
-            "name": "Lead Qualifier Pro",
-            "description": "Advanced AI agent that expertly qualifies leads using BANT methodology and scores prospects",
+            "name": "Yelp Quote Specialist",
+            "description": "Expert agent for handling Yelp 'Request a Quote' leads for home services. Specializes in qualifying homeowners and scheduling service estimates.",
             "type": "lead_qualifier",
-            "prompt_template": "You are a lead qualification specialist. Use the BANT (Budget, Authority, Need, Timeline) framework to qualify leads. Ask strategic questions to determine if prospects are a good fit for our services. Be thorough but respectful of their time.",
-            "personality": "professional",
-            "response_style": "detailed",
+            "use_case": "yelp_quote_qualification",
+            "prompt_template": "You are a professional home service specialist handling Yelp quote requests. Your goal is to quickly qualify homeowners, understand their project needs, timeline, and budget to provide accurate estimates. Be friendly but efficient, ask the right questions to gather project details, and guide them toward scheduling an in-home consultation when appropriate.",
+            "personality_traits": ["Professional", "Efficient", "Helpful"],
+            "personality_style": "professional",
+            "response_length": "moderate",
+            "custom_personality_instructions": "Always ask about project timeline, budget range, and specific requirements. Mention our 5-star Yelp rating and local expertise.",
             "model": "gpt-4",
-            "temperature": "0.3",
-            "max_tokens": 600,
+            "temperature": "0.4",
+            "max_tokens": 500,
+            "knowledge": [
+                {"title": "Yelp Best Practices", "content": "Always respond within 1 hour to Yelp quotes for best ranking"},
+                {"title": "Home Service Pricing", "content": "Standard pricing ranges for common home improvement projects"},
+                {"title": "Seasonal Considerations", "content": "Project timing recommendations based on California weather"}
+            ],
+            "enabled_tools": ["calendar_scheduler", "price_calculator", "project_estimator"],
+            "tool_configs": {
+                "calendar_scheduler": {"integration": "calendly", "buffer_time": 30},
+                "price_calculator": {"markup_percentage": 15, "include_materials": True}
+            },
             "triggers": [
-                {"event": "lead_status_change", "condition": "status=contacted"},
-                {"event": "demo_request", "condition": "any"}
+                {"event": "yelp_quote_request", "condition": "source=Yelp"},
+                {"event": "new_lead", "condition": "source=Yelp AND service_type=home_improvement"}
             ],
             "actions": [
-                {"type": "update_lead_score", "threshold": 70},
-                {"type": "assign_to_sales", "condition": "score>80"},
-                {"type": "add_to_nurture", "condition": "score<50"}
+                {"type": "send_initial_response", "template": "yelp_quote_response", "delay": "immediate"},
+                {"type": "schedule_estimate", "condition": "qualified=true"},
+                {"type": "update_lead_score", "formula": "project_size * urgency * budget_fit"}
             ],
             "workflow_steps": [
-                {"step": 1, "action": "assess_budget", "description": "Determine budget range and decision timeline"},
-                {"step": 2, "action": "identify_authority", "description": "Confirm decision-making authority"},
-                {"step": 3, "action": "understand_needs", "description": "Deep dive into business needs and pain points"},
-                {"step": 4, "action": "establish_timeline", "description": "Understand implementation timeline"},
-                {"step": 5, "action": "calculate_score", "description": "Score lead based on BANT criteria"}
+                {"step": 1, "action": "acknowledge_request", "description": "Thank them for their Yelp quote request"},
+                {"step": 2, "action": "gather_project_details", "description": "Ask about project scope, timeline, and location"},
+                {"step": 3, "action": "assess_budget_fit", "description": "Understand their budget expectations"},
+                {"step": 4, "action": "provide_initial_estimate", "description": "Give ballpark pricing if possible"},
+                {"step": 5, "action": "schedule_consultation", "description": "Book in-home estimate appointment"}
             ],
             "integrations": [
-                {"service": "salesforce", "config": {"lead_scoring": True}},
-                {"service": "hubspot", "config": {"auto_assign": True}}
+                {"service": "yelp_api", "config": {"auto_respond": True, "response_template": "professional"}},
+                {"service": "calendly", "config": {"calendar_type": "estimate_appointments"}},
+                {"service": "quickbooks", "config": {"auto_create_estimate": True}}
             ],
             "sample_conversations": [
                 {
                     "id": 1,
                     "messages": [
-                        {"role": "user", "content": "We need a better way to manage our customer data"},
-                        {"role": "assistant", "content": "I understand you're looking to improve customer data management. To help me recommend the best solution, could you share your approximate budget range for this project?"}
+                        {"role": "user", "content": "I need a quote for kitchen remodeling in my 1200 sq ft home"},
+                        {"role": "assistant", "content": "Thank you for your Yelp quote request! I'd be happy to help with your kitchen remodel. To provide you with an accurate estimate, could you tell me what specific updates you're looking for? For example, are you thinking full renovation with new cabinets and appliances, or more of a refresh with countertops and paint?"}
                     ]
                 }
             ],
             "total_interactions": 89,
-            "success_rate": "91.2",
-            "avg_response_time": "2.1"
+            "success_rate": "92.1",
+            "avg_response_time": "0.8"
+        },
+        {
+            "name": "HomeAdvisor Pro Assistant",
+            "description": "Specialized AI agent for managing HomeAdvisor leads and converting them into booked appointments for home service projects.",
+            "type": "conversational",
+            "use_case": "homeadvisor_lead_conversion",
+            "prompt_template": "You are a professional home service representative specializing in HomeAdvisor leads. Your goal is to quickly build rapport with homeowners, understand their project needs, and convert them into scheduled consultations. Be knowledgeable about home improvement projects, pricing, and timelines. Always emphasize our expertise and customer satisfaction ratings.",
+            "personality_traits": ["Knowledgeable", "Trustworthy", "Results-oriented"],
+            "personality_style": "professional",
+            "response_length": "moderate",
+            "custom_personality_instructions": "Reference our HomeAdvisor Pro status and customer reviews. Focus on building trust quickly and getting to an appointment booking.",
+            "model": "gpt-3.5-turbo",
+            "temperature": "0.5",
+            "max_tokens": 450,
+            "knowledge": [
+                {"title": "HomeAdvisor Lead Quality", "content": "HomeAdvisor leads are pre-screened and have expressed specific interest"},
+                {"title": "Trust Building", "content": "Emphasize licensing, insurance, and customer testimonials"},
+                {"title": "Project Timelines", "content": "Standard timelines for different home improvement projects"}
+            ],
+            "enabled_tools": ["appointment_scheduler", "project_calculator", "review_displayer"],
+            "tool_configs": {
+                "appointment_scheduler": {"service": "acuity", "buffer_days": 2},
+                "review_displayer": {"min_rating": 4, "max_reviews": 5}
+            },
+            "triggers": [
+                {"event": "new_lead", "condition": "source=HomeAdvisor"},
+                {"event": "lead_response", "condition": "platform=HomeAdvisor"}
+            ],
+            "actions": [
+                {"type": "immediate_response", "template": "homeadvisor_greeting"},
+                {"type": "share_credentials", "content": "license_and_insurance"},
+                {"type": "schedule_estimate", "priority": "high"}
+            ],
+            "workflow_steps": [
+                {"step": 1, "action": "express_gratitude", "description": "Thank them for choosing us on HomeAdvisor"},
+                {"step": 2, "action": "establish_credibility", "description": "Share credentials and customer reviews"},
+                {"step": 3, "action": "understand_project", "description": "Ask detailed questions about their project"},
+                {"step": 4, "action": "provide_expertise", "description": "Share relevant experience and insights"},
+                {"step": 5, "action": "book_consultation", "description": "Schedule in-home estimate"}
+            ],
+            "integrations": [
+                {"service": "homeadvisor_api", "config": {"auto_accept_leads": True}},
+                {"service": "google_calendar", "config": {"estimate_calendar": "home_estimates"}},
+                {"service": "twilio", "config": {"follow_up_sms": True}}
+            ],
+            "sample_conversations": [
+                {
+                    "id": 1,
+                    "messages": [
+                        {"role": "user", "content": "I submitted a request for bathroom renovation on HomeAdvisor"},
+                        {"role": "assistant", "content": "Thank you for choosing us for your bathroom renovation project! We're excited to help bring your vision to life. We're licensed, fully insured, and have completed over 200 bathroom renovations with a 4.9-star rating. Could you tell me more about what you're hoping to achieve with this renovation?"}
+                    ]
+                }
+            ],
+            "total_interactions": 156,
+            "success_rate": "88.5",
+            "avg_response_time": "1.2"
         },
         {
             "name": "Follow-up Champion",
             "description": "Persistent but polite AI agent that maintains engagement with prospects through strategic follow-ups",
             "type": "follow_up",
+            "use_case": "lead_nurturing",
             "prompt_template": "You are a follow-up specialist focused on maintaining positive relationships with prospects. Your goal is to re-engage leads who haven't responded, provide additional value, and move them back into the sales process. Always be helpful and never pushy.",
-            "personality": "friendly",
-            "response_style": "concise",
+            "personality_traits": ["Friendly", "Persistent", "Helpful"],
+            "personality_style": "friendly",
+            "response_length": "concise",
+            "custom_personality_instructions": "Never be pushy or aggressive. Always provide value before asking for anything.",
             "model": "gpt-3.5-turbo",
             "temperature": "0.6",
             "max_tokens": 350,
+            "knowledge": [
+                {"title": "Follow-up Timing", "content": "Best practices for follow-up timing and frequency"},
+                {"title": "Value-Added Content", "content": "Resources and content to share with prospects"},
+                {"title": "Re-engagement Strategies", "content": "Proven methods to re-activate cold leads"}
+            ],
+            "enabled_tools": ["email_templates", "content_library", "reminder_scheduler"],
+            "tool_configs": {
+                "email_templates": {"category": "follow_up", "personalization": True},
+                "reminder_scheduler": {"default_delay": "7_days", "max_attempts": 5}
+            },
             "triggers": [
                 {"event": "no_response", "condition": "days>3"},
                 {"event": "email_opened", "condition": "no_click"},
@@ -149,12 +192,25 @@ def create_realistic_agents():
             "name": "Support Hero",
             "description": "Customer support specialist that handles inquiries, resolves issues, and escalates when needed",
             "type": "conversational",
+            "use_case": "customer_support",
             "prompt_template": "You are a helpful customer support representative. Your goal is to resolve customer issues quickly and effectively. If you can't solve a problem, escalate it to human support with clear context. Always maintain a positive, solution-focused attitude.",
-            "personality": "professional",
-            "response_style": "detailed",
+            "personality_traits": ["Professional", "Patient", "Solution-focused"],
+            "personality_style": "professional",
+            "response_length": "detailed",
+            "custom_personality_instructions": "Always remain calm and helpful, even with frustrated customers. Focus on solving problems efficiently.",
             "model": "gpt-3.5-turbo",
             "temperature": "0.4",
             "max_tokens": 500,
+            "knowledge": [
+                {"title": "Common Issues", "content": "Database of frequently reported issues and solutions"},
+                {"title": "Escalation Procedures", "content": "When and how to escalate issues to human support"},
+                {"title": "Customer Satisfaction", "content": "Best practices for maintaining high customer satisfaction"}
+            ],
+            "enabled_tools": ["ticket_system", "knowledge_base", "escalation_manager"],
+            "tool_configs": {
+                "ticket_system": {"auto_create": True, "priority_detection": True},
+                "escalation_manager": {"timeout_minutes": 10, "complexity_threshold": 7}
+            },
             "triggers": [
                 {"event": "support_ticket", "condition": "priority=low"},
                 {"event": "chat_initiated", "condition": "page=support"}
@@ -253,18 +309,18 @@ def create_realistic_agents():
                 name=agent_data["name"],
                 description=agent_data["description"],
                 type=agent_data["type"],
-                use_case="general_sales",  # Default use case
+                use_case=agent_data.get("use_case", "general_sales"),
 
                 # Prompt configuration
                 prompt_template=agent_data["prompt_template"],
-                prompt_template_name=None,
-                prompt_variables={},
+                prompt_template_name=agent_data.get("prompt_template_name"),
+                prompt_variables=agent_data.get("prompt_variables", {}),
 
-                # Personality configuration (map old fields to new structure)
-                personality_traits=[agent_data["personality"]] if agent_data.get("personality") else [],
-                personality_style=agent_data.get("personality", "professional"),
-                response_length=agent_data.get("response_style", "moderate"),
-                custom_personality_instructions=None,
+                # Personality configuration (use new fields)
+                personality_traits=agent_data.get("personality_traits", []),
+                personality_style=agent_data.get("personality_style", "professional"),
+                response_length=agent_data.get("response_length", "moderate"),
+                custom_personality_instructions=agent_data.get("custom_personality_instructions"),
 
                 # AI Model configuration
                 model=agent_data["model"],
@@ -272,26 +328,26 @@ def create_realistic_agents():
                 max_tokens=agent_data["max_tokens"],
 
                 # Knowledge Base
-                knowledge=[],
+                knowledge=agent_data.get("knowledge", []),
 
                 # Tools and Actions
-                enabled_tools=[],
-                tool_configs={},
+                enabled_tools=agent_data.get("enabled_tools", []),
+                tool_configs=agent_data.get("tool_configs", {}),
 
                 # Conversation Settings
-                conversation_settings={},
+                conversation_settings=agent_data.get("conversation_settings", {}),
 
                 # Workflow configuration
-                triggers=agent_data["triggers"],
-                actions=agent_data["actions"],
-                workflow_steps=agent_data["workflow_steps"],
-                integrations=agent_data["integrations"],
-                sample_conversations=agent_data["sample_conversations"],
+                triggers=agent_data.get("triggers", []),
+                actions=agent_data.get("actions", []),
+                workflow_steps=agent_data.get("workflow_steps", []),
+                integrations=agent_data.get("integrations", []),
+                sample_conversations=agent_data.get("sample_conversations", []),
 
                 # Status and performance
-                total_interactions=agent_data["total_interactions"],
-                success_rate=agent_data["success_rate"],
-                avg_response_time=agent_data["avg_response_time"],
+                total_interactions=agent_data.get("total_interactions", 0),
+                success_rate=agent_data.get("success_rate", "0.0"),
+                avg_response_time=agent_data.get("avg_response_time", "0.0"),
                 is_active=agent_data.get("is_active", True),
                 is_public=random.choice([True, False]),
                 created_by=random.choice(["Sarah Thompson", "Mike Chen", "Admin", "System"]),

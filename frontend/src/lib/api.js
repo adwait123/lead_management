@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-// Create axios instance with default config
+// Create axios instance with dynamic URL resolution
 const getApiUrl = () => {
   const hostname = window.location.hostname
   const apiUrl = hostname.includes('onrender.com')
@@ -18,16 +18,18 @@ const getApiUrl = () => {
 }
 
 const api = axios.create({
-  baseURL: getApiUrl(),
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
-// Request interceptor for adding auth tokens (if needed)
+// Request interceptor for dynamic baseURL and auth tokens
 api.interceptors.request.use(
   (config) => {
+    // Set the baseURL dynamically for each request
+    config.baseURL = getApiUrl()
+
     // Add auth token if available
     // const token = localStorage.getItem('token')
     // if (token) {
