@@ -67,8 +67,55 @@ export function AIInstructionsTab() {
     }
   ];
 
-  // Generate starter prompt based on wizard data
-  const generateStarterPrompt = () => {
+  // Map use case to prompt template ID
+  const getTemplateIdFromUseCase = (useCase) => {
+    const mapping = {
+      'speed_to_lead': 'lead_qualification',
+      'appointment_confirmation': 'booking_scheduling',
+      'appointment_reminders': 'booking_scheduling',
+      'recurring_services': 'customer_support',
+      'estimate_followup': 'follow_up_nurture',
+      'join_membership': 'general_sales'
+    };
+    return mapping[useCase] || 'lead_qualification'; // Default to lead_qualification
+  };
+
+  // Fetch prompt template from API based on use case
+  const fetchPromptTemplate = async (useCase) => {
+    try {
+      const templateId = getTemplateIdFromUseCase(useCase);
+      // Use the same API URL pattern as rest of the application
+      const response = await fetch(`https://lead-management-j828.onrender.com/api/prompt-templates/${templateId}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch template: ${response.status}`);
+      }
+      const template = await response.json();
+      return template.prompt;
+    } catch (error) {
+      console.error('Error fetching prompt template:', error);
+      // Fall back to original hardcoded prompt if API fails
+      return null; // Return null to trigger fallback
+    }
+  };
+
+  // Generate starter prompt based on wizard data (now fetches from API)
+  const generateStarterPrompt = async () => {
+    const useCase = wizardData.useCase;
+
+    if (useCase) {
+      // Fetch from API based on use case
+      const apiPrompt = await fetchPromptTemplate(useCase);
+      if (apiPrompt) {
+        return apiPrompt;
+      }
+    }
+
+    // Fallback to original logic if no use case or API fails
+    return generateFallbackPrompt();
+  };
+
+  // Original hardcoded prompt generation as fallback
+  const generateFallbackPrompt = () => {
     const persona = wizardData.persona || {};
     const hasBusinessInfo = Object.keys(wizardData.businessProfile || {}).some(key => wizardData.businessProfile[key]);
     const hasFaqs = (wizardData.faq || []).length > 0;
@@ -304,11 +351,14 @@ export function AIInstructionsTab() {
   // Load starter prompt if empty
   useEffect(() => {
     if (!prompt && wizardData.persona?.agentName) {
-      const starter = generateStarterPrompt();
-      setPrompt(starter);
-      updateWizardData({ instructions: { ...wizardData.instructions, systemPrompt: starter } });
+      const loadPrompt = async () => {
+        const starter = await generateStarterPrompt();
+        setPrompt(starter);
+        updateWizardData({ instructions: { ...wizardData.instructions, systemPrompt: starter } });
+      };
+      loadPrompt();
     }
-  }, [wizardData.persona?.agentName]);
+  }, [wizardData.persona?.agentName, wizardData.useCase]); // Add useCase as dependency
 
   // Render slash commands with special styling in the preview
   const renderPromptPreview = () => {
@@ -484,7 +534,10 @@ export function AIInstructionsTab() {
             </Button>
             <Button
               variant="outline"
-              onClick={() => handlePromptChange(generateStarterPrompt())}
+              onClick={async () => {
+                const starter = await generateStarterPrompt();
+                handlePromptChange(starter);
+              }}
               className="text-purple-600 border-purple-200 hover:bg-purple-50"
             >
               Generate Starter
