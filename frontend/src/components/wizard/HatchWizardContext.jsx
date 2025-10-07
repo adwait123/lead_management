@@ -363,10 +363,12 @@ export const HatchWizardProvider = ({ children }) => {
         throw new Error('Prompt template is required');
       }
 
-      console.log('Making deployment request to:', 'http://localhost:8000/api/agents/');
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const deployUrl = `${apiUrl}/api/agents/`;
+      console.log('Making deployment request to:', deployUrl);
 
       // Make API call to create agent
-      const response = await fetch('http://localhost:8000/api/agents/', {
+      const response = await fetch(deployUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
