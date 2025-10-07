@@ -17,29 +17,47 @@ Session = sessionmaker(bind=engine)
 def create_realistic_leads():
     """Create realistic lead data for demo purposes"""
 
-    # Sample data
+    # Sample data - Yelp Request a Quote style home service leads
     names = [
         "Sarah Chen", "Mike Rodriguez", "Emily Johnson", "David Kim", "Jessica Williams",
         "Alex Thompson", "Maria Garcia", "James Wilson", "Ashley Brown", "Chris Lee",
         "Amanda Davis", "Kevin Martinez", "Lisa Anderson", "Ryan Taylor", "Nicole White",
-        "Brandon Hall", "Stephanie Moore", "Daniel Jackson", "Melissa Clark", "Justin Lewis"
+        "Brandon Hall", "Stephanie Moore", "Daniel Jackson", "Melissa Clark", "Justin Lewis",
+        "Robert Brown", "Jennifer Miller", "Michael Davis", "Karen Wilson", "Steven Garcia",
+        "Linda Martinez", "William Anderson", "Patricia Taylor", "Richard Thomas", "Mary Jackson"
     ]
 
-    companies = [
-        "TechStart Inc", "Growth Co", "Innovate Labs", "Digital Solutions", "NextGen Systems",
-        "CloudFirst", "DataDriven LLC", "ScaleUp Corp", "AgileWorks", "BrightFuture Co",
-        "SmartBiz Solutions", "ProActive Systems", "VelocityTech", "OptimalFlow", "PeakPerformance",
-        "EliteServices", "PrecisionCorp", "DynamicEdge", "QuantumLeap", "SynergyPro"
+    # Home addresses instead of companies for residential leads
+    addresses = [
+        "1425 Oak Street, San Francisco, CA 94102", "892 Pine Avenue, Los Angeles, CA 90210",
+        "567 Elm Drive, San Diego, CA 92101", "234 Maple Lane, Sacramento, CA 95814",
+        "789 Cedar Court, Fresno, CA 93701", "456 Birch Way, Oakland, CA 94601",
+        "123 Willow Street, San Jose, CA 95110", "678 Ash Boulevard, Long Beach, CA 90802",
+        "345 Spruce Road, Bakersfield, CA 93301", "901 Fir Avenue, Anaheim, CA 92801",
+        "112 Cherry Lane, Santa Ana, CA 92701", "223 Walnut Drive, Riverside, CA 92501",
+        "334 Hickory Court, Stockton, CA 95202", "445 Poplar Street, Irvine, CA 92602",
+        "556 Sycamore Way, Fremont, CA 94536", "667 Magnolia Road, San Bernardino, CA 92401",
+        "778 Dogwood Lane, Modesto, CA 95350", "889 Redwood Avenue, Oxnard, CA 93030",
+        "990 Palm Drive, Fontana, CA 92335", "111 Cypress Court, Moreno Valley, CA 92553",
+        "222 Juniper Street, Huntington Beach, CA 92648", "333 Laurel Way, Glendale, CA 91201",
+        "444 Olive Boulevard, Santa Clarita, CA 91350", "555 Peach Lane, Fullerton, CA 92831",
+        "666 Plum Road, Thousand Oaks, CA 91360", "777 Lemon Avenue, Visalia, CA 93277",
+        "888 Orange Drive, Concord, CA 94518", "999 Apple Court, Simi Valley, CA 93063",
+        "101 Grape Street, Vallejo, CA 94590", "202 Berry Lane, Victorville, CA 92392"
     ]
 
+    # Home service categories
     services = [
-        "CRM Implementation", "Digital Marketing", "Web Development", "Cloud Migration",
-        "Data Analytics", "Mobile App Development", "SEO Optimization", "Social Media Management",
-        "E-commerce Development", "Business Automation", "AI Integration", "Cybersecurity Audit",
-        "Software Consulting", "System Integration", "User Experience Design"
+        "Plumbing Repair", "HVAC Installation", "Electrical Work", "Roofing Repair", "Kitchen Remodel",
+        "Bathroom Renovation", "Flooring Installation", "Painting (Interior)", "Painting (Exterior)",
+        "Landscaping", "Tree Removal", "Fence Installation", "Deck Building", "Garage Door Repair",
+        "Window Replacement", "Gutter Cleaning", "Carpet Cleaning", "House Cleaning", "Pest Control",
+        "Pool Maintenance", "Driveway Repair", "Concrete Work", "Tile Installation", "Hardwood Refinishing",
+        "Appliance Repair", "Water Heater Installation", "Solar Panel Installation", "Security System Install",
+        "Basement Waterproofing", "Chimney Cleaning"
     ]
 
-    sources = ["Facebook Ads", "Google Ads", "Website", "Referral", "LinkedIn", "Email Campaign"]
+    sources = ["Yelp", "Angie's List", "HomeAdvisor", "Thumbtack", "Google Local", "Nextdoor"]
     statuses = ["new", "contacted", "qualified", "won", "lost"]
 
     # Note templates
@@ -90,15 +108,16 @@ def create_realistic_leads():
         leads = []
 
         for i in range(len(names)):
-            # Create realistic email
+            # Create realistic email for homeowner
             name_parts = names[i].lower().split()
-            email = f"{name_parts[0]}.{name_parts[1]}@{companies[i].lower().replace(' ', '').replace(',', '').replace('inc', '').replace('llc', '').replace('corp', '').replace('co', '')}{'tech' if len(companies[i].replace(' ', '')) < 8 else ''}.com"
+            email_domains = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "icloud.com", "aol.com"]
+            email = f"{name_parts[0]}.{name_parts[1]}@{random.choice(email_domains)}"
 
             # Generate phone number
             phone = f"+1 ({random.randint(200, 999)}) {random.randint(200, 999)}-{random.randint(1000, 9999)}"
 
-            # Random status with realistic distribution
-            status_weights = [0.3, 0.25, 0.2, 0.15, 0.1]  # More new/contacted leads
+            # Random status with realistic distribution for home service quotes
+            status_weights = [0.4, 0.3, 0.15, 0.1, 0.05]  # More new/contacted for quote requests
             status = random.choices(statuses, weights=status_weights)[0]
 
             # Random dates (last 30 days)
@@ -137,7 +156,7 @@ def create_realistic_leads():
                 name=names[i],
                 email=email,
                 phone=phone,
-                company=companies[i],
+                company=addresses[i],  # Using address field for home address
                 service_requested=random.choice(services),
                 status=status,
                 source=random.choice(sources),
