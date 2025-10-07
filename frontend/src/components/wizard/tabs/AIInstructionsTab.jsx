@@ -106,10 +106,9 @@ export function AIInstructionsTab() {
     }
   };
 
-  // Generate starter prompt based on wizard data (now fetches from API)
-  const generateStarterPrompt = async () => {
-    const useCase = wizardData.useCase;
-    console.log(`🚀 generateStarterPrompt called with useCase: ${useCase}`);
+  // Generate starter prompt with explicit useCase parameter
+  const generateStarterPromptWithUseCase = async (useCase) => {
+    console.log(`🚀 generateStarterPromptWithUseCase called with useCase: ${useCase}`);
 
     if (useCase) {
       console.log(`📋 Fetching API template for useCase: ${useCase}`);
@@ -129,6 +128,12 @@ export function AIInstructionsTab() {
     const fallback = generateFallbackPrompt();
     console.log(`🔄 Using fallback prompt, length: ${fallback.length}`);
     return fallback;
+  };
+
+  // Generate starter prompt based on wizard data (legacy function for button)
+  const generateStarterPrompt = async () => {
+    const useCase = wizardData.useCase;
+    return await generateStarterPromptWithUseCase(useCase);
   };
 
   // Original hardcoded prompt generation as fallback
@@ -371,8 +376,10 @@ export function AIInstructionsTab() {
 
     if (!prompt && (wizardData.persona?.agentName || wizardData.useCase)) {
       console.log(`✅ Conditions met, loading prompt...`);
+      const currentUseCase = wizardData.useCase; // Capture useCase value at this moment
       const loadPrompt = async () => {
-        const starter = await generateStarterPrompt();
+        console.log(`🎯 Captured useCase for prompt generation: ${currentUseCase}`);
+        const starter = await generateStarterPromptWithUseCase(currentUseCase);
         console.log(`📝 Setting prompt in state and wizard data...`);
         setPrompt(starter);
         updateWizardData({ instructions: { ...wizardData.instructions, systemPrompt: starter } });
