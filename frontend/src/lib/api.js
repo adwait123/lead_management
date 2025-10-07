@@ -2,12 +2,19 @@ import axios from 'axios'
 
 // Create axios instance with default config
 const getApiUrl = () => {
-  // Check if we're in production (Render deployment)
-  if (window.location.hostname.includes('onrender.com')) {
-    return 'https://lead-management-j828.onrender.com'
-  }
-  // Use environment variable or fallback to localhost for development
-  return import.meta.env.VITE_API_URL || 'http://localhost:8000'
+  const hostname = window.location.hostname
+  const apiUrl = hostname.includes('onrender.com')
+    ? 'https://lead-management-j828.onrender.com'
+    : import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  console.log('API URL Detection:', {
+    hostname,
+    isRender: hostname.includes('onrender.com'),
+    selectedUrl: apiUrl,
+    envVar: import.meta.env.VITE_API_URL
+  })
+
+  return apiUrl
 }
 
 const api = axios.create({
