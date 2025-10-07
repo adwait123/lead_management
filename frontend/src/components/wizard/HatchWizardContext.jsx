@@ -394,9 +394,9 @@ export const HatchWizardProvider = ({ children }) => {
       // Navigate to agents page to see the new agent
       setTimeout(() => {
         if (typeof window !== 'undefined') {
-          window.location.href = '/agents';
+          window.location.replace('/agents');
         }
-      }, 1000);
+      }, 2000);
 
       return createdAgent;
 
