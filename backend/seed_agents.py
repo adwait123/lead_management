@@ -1,3 +1,4 @@
+
 """
 Seed data script for AI Agents
 """

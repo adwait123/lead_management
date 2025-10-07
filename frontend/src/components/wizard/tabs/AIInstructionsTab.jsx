@@ -189,7 +189,7 @@ export function AIInstructionsTab() {
 
     setIsGenerating(true);
     try {
-      const response = await fetch('http://localhost:8000/api/agents/generate-prompt', {
+      const response = await fetch('https://lead-management-j828.onrender.com/api/agents/generate-prompt', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -237,7 +237,7 @@ export function AIInstructionsTab() {
         target_customers: 'General customers'
       };
 
-      const response = await fetch('http://localhost:8000/api/agents/generate-scenario-prompt', {
+      const response = await fetch('https://lead-management-j828.onrender.com/api/agents/generate-scenario-prompt', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

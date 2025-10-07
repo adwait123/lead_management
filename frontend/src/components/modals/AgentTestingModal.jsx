@@ -113,7 +113,7 @@ export function AgentTestingModal({ isOpen, onClose, agentConfig, wizardData }) 
         }));
 
       // Try to get real OpenAI response first
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = 'https://lead-management-j828.onrender.com';
       const response = await fetch(`${apiUrl}/api/agents/1/chat`, {
         method: 'POST',
         headers: {
