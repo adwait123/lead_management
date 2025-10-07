@@ -113,7 +113,8 @@ export function AgentTestingModal({ isOpen, onClose, agentConfig, wizardData }) 
         }));
 
       // Try to get real OpenAI response first
-      const response = await fetch('http://localhost:8000/api/agents/1/chat', {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/api/agents/1/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
