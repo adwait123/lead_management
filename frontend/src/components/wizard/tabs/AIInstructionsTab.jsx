@@ -350,7 +350,7 @@ export function AIInstructionsTab() {
 
   // Load starter prompt if empty
   useEffect(() => {
-    if (!prompt && wizardData.persona?.agentName) {
+    if (!prompt && (wizardData.persona?.agentName || wizardData.useCase)) {
       const loadPrompt = async () => {
         const starter = await generateStarterPrompt();
         setPrompt(starter);
@@ -358,7 +358,7 @@ export function AIInstructionsTab() {
       };
       loadPrompt();
     }
-  }, [wizardData.persona?.agentName, wizardData.useCase]); // Add useCase as dependency
+  }, [wizardData.persona?.agentName, wizardData.useCase]); // Trigger on either persona or useCase
 
   // Render slash commands with special styling in the preview
   const renderPromptPreview = () => {
