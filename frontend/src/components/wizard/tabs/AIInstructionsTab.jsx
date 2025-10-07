@@ -84,15 +84,23 @@ export function AIInstructionsTab() {
   const fetchPromptTemplate = async (useCase) => {
     try {
       const templateId = getTemplateIdFromUseCase(useCase);
+      console.log(`🔍 Fetching template: ${templateId} for use case: ${useCase}`);
+
       // Use the same API URL pattern as rest of the application
-      const response = await fetch(`https://lead-management-j828.onrender.com/api/prompt-templates/${templateId}`);
+      const url = `https://lead-management-j828.onrender.com/api/prompt-templates/${templateId}`;
+      console.log(`📡 API URL: ${url}`);
+
+      const response = await fetch(url);
+      console.log(`📊 Response status: ${response.status}`);
+
       if (!response.ok) {
         throw new Error(`Failed to fetch template: ${response.status}`);
       }
       const template = await response.json();
+      console.log(`✅ Template fetched successfully, length: ${template.prompt.length}`);
       return template.prompt;
     } catch (error) {
-      console.error('Error fetching prompt template:', error);
+      console.error('❌ Error fetching prompt template:', error);
       // Fall back to original hardcoded prompt if API fails
       return null; // Return null to trigger fallback
     }
@@ -101,17 +109,26 @@ export function AIInstructionsTab() {
   // Generate starter prompt based on wizard data (now fetches from API)
   const generateStarterPrompt = async () => {
     const useCase = wizardData.useCase;
+    console.log(`🚀 generateStarterPrompt called with useCase: ${useCase}`);
 
     if (useCase) {
+      console.log(`📋 Fetching API template for useCase: ${useCase}`);
       // Fetch from API based on use case
       const apiPrompt = await fetchPromptTemplate(useCase);
       if (apiPrompt) {
+        console.log(`✅ Using API prompt, length: ${apiPrompt.length}`);
         return apiPrompt;
+      } else {
+        console.log(`⚠️ API prompt failed, falling back to hardcoded`);
       }
+    } else {
+      console.log(`⚠️ No useCase provided, using fallback`);
     }
 
     // Fallback to original logic if no use case or API fails
-    return generateFallbackPrompt();
+    const fallback = generateFallbackPrompt();
+    console.log(`🔄 Using fallback prompt, length: ${fallback.length}`);
+    return fallback;
   };
 
   // Original hardcoded prompt generation as fallback
@@ -350,13 +367,19 @@ export function AIInstructionsTab() {
 
   // Load starter prompt if empty
   useEffect(() => {
+    console.log(`🔄 useEffect triggered - prompt: ${prompt ? 'exists' : 'empty'}, agentName: ${wizardData.persona?.agentName}, useCase: ${wizardData.useCase}`);
+
     if (!prompt && (wizardData.persona?.agentName || wizardData.useCase)) {
+      console.log(`✅ Conditions met, loading prompt...`);
       const loadPrompt = async () => {
         const starter = await generateStarterPrompt();
+        console.log(`📝 Setting prompt in state and wizard data...`);
         setPrompt(starter);
         updateWizardData({ instructions: { ...wizardData.instructions, systemPrompt: starter } });
       };
       loadPrompt();
+    } else {
+      console.log(`❌ Conditions not met for loading prompt`);
     }
   }, [wizardData.persona?.agentName, wizardData.useCase]); // Trigger on either persona or useCase
 
