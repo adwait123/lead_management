@@ -62,6 +62,17 @@ function HatchWizardContent() {
   const handleTemplateComplete = () => {
     // This will transition to the configuration phase
     console.log('Template selection complete:', wizardData);
+
+    // Store wizard data in localStorage for next step
+    try {
+      localStorage.setItem('wizardData', JSON.stringify(wizardData));
+      localStorage.setItem('selectedTemplate', JSON.stringify(wizardData.selectedTemplate));
+      localStorage.setItem('useCase', wizardData.useCase);
+      console.log('✅ Stored wizard data in localStorage for next step');
+    } catch (e) {
+      console.error('❌ Failed to store wizard data:', e);
+    }
+
     // Navigate to configuration page
     navigate('/agents/config');
   };

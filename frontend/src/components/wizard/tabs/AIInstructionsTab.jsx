@@ -27,21 +27,39 @@ export function AIInstructionsTab() {
   // Check for useCase in URL params or localStorage as fallback
   const urlParams = new URLSearchParams(window.location.search);
   const urlUseCase = urlParams.get('useCase');
-  const storedTemplate = localStorage.getItem('selectedTemplate');
-  let storedUseCase = null;
 
+  // Check multiple localStorage sources
+  let storedUseCase = localStorage.getItem('useCase'); // Direct storage
+  let storedTemplate = null;
+  let storedWizardData = null;
+
+  // Try to get from stored template
   try {
-    if (storedTemplate) {
-      const template = JSON.parse(storedTemplate);
-      storedUseCase = template.id;
+    const templateStr = localStorage.getItem('selectedTemplate');
+    if (templateStr) {
+      storedTemplate = JSON.parse(templateStr);
+      if (!storedUseCase) storedUseCase = storedTemplate.id;
     }
   } catch (e) {
     console.log('Could not parse stored template');
   }
 
+  // Try to get from stored wizard data
+  try {
+    const wizardStr = localStorage.getItem('wizardData');
+    if (wizardStr) {
+      storedWizardData = JSON.parse(wizardStr);
+      if (!storedUseCase) storedUseCase = storedWizardData.useCase;
+    }
+  } catch (e) {
+    console.log('Could not parse stored wizard data');
+  }
+
   console.log(`🔍 Alternative useCase sources:`, {
     url: urlUseCase,
-    localStorage: storedUseCase
+    localStorageUseCase: localStorage.getItem('useCase'),
+    localStorageTemplate: storedTemplate?.id,
+    localStorageWizardData: storedWizardData?.useCase
   });
 
   // Get tool configurations from wizard data
