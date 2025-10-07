@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Plus, Search, Filter, Eye, Phone, Mail, Building2, Calendar, Clock, User } from 'lucide-react'
-import { leadsAPI } from '../lib/api'
+import { leadsAPI } from '../lib/api.js'
 
 export function Leads() {
   const [leads, setLeads] = useState([])

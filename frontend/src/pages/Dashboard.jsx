@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Users, UserCheck, TrendingUp, MessageSquare, RefreshCw } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { dashboardAPI } from '../lib/api'
+import { dashboardAPI } from '../lib/api.js'
 
 export function Dashboard() {
   const [metrics, setMetrics] = useState(null)

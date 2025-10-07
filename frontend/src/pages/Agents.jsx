@@ -24,7 +24,7 @@ import {
   Edit3,
   Send
 } from 'lucide-react'
-import { agentsAPI } from '../lib/api'
+import { agentsAPI } from '../lib/api.js'
 
 export function Agents() {
   const navigate = useNavigate()
