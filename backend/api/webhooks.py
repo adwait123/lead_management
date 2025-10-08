@@ -1,7 +1,7 @@
 """
 Webhook API endpoints for external integrations (Zapier, Yelp, etc.)
 """
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional, List
 import logging
@@ -59,7 +59,6 @@ class WebhookResponse(BaseModel):
 @router.post("/zapier/yelp-lead-created", response_model=WebhookResponse)
 async def handle_yelp_lead_created(
     webhook_data: YelpLeadCreatedWebhook,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
@@ -140,28 +139,26 @@ async def handle_yelp_lead_created(
 
         logger.info(f"Created lead {lead.id} for Yelp lead {webhook_data.id}")
 
-        # Trigger workflow for agent engagement in background
-        def trigger_workflow():
-            try:
-                workflow_service = WorkflowService(db)
-                session_ids = workflow_service.handle_lead_created(
-                    lead_id=lead.id,
-                    source="yelp",
-                    form_data=project_details
-                )
-                logger.info(f"Triggered workflow for lead {lead.id}, created sessions: {session_ids}")
-                return session_ids
-            except Exception as e:
-                logger.error(f"Failed to trigger workflow for lead {lead.id}: {str(e)}")
-                return []
-
-        # Add workflow trigger to background tasks
-        background_tasks.add_task(trigger_workflow)
+        # Trigger workflow for agent engagement synchronously
+        session_ids = []
+        try:
+            workflow_service = WorkflowService(db)
+            session_ids = workflow_service.handle_lead_created(
+                lead_id=lead.id,
+                source="yelp",
+                form_data=project_details
+            )
+            logger.info(f"Triggered workflow for lead {lead.id}, created sessions: {session_ids}")
+        except Exception as e:
+            logger.error(f"Failed to trigger workflow for lead {lead.id}: {str(e)}")
+            # Don't fail the webhook if workflow fails, just log the error
+            session_ids = []
 
         return WebhookResponse(
             success=True,
             message=f"Yelp lead {webhook_data.id} created successfully",
-            lead_id=lead.id
+            lead_id=lead.id,
+            session_ids=session_ids
         )
 
     except Exception as e:
