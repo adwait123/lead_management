@@ -35,7 +35,7 @@ function HatchEditContent() {
   const loadAgentData = async (agentId) => {
     try {
       setLoadingAgent(true);
-      const response = await fetch(`https://lead-management-j828.onrender.com/api/agents/${agentId}`);
+      const response = await fetch(`https://lead-management-staging-backend.onrender.com/api/agents/${agentId}`);
 
       if (!response.ok) {
         throw new Error('Failed to load agent');
@@ -126,7 +126,7 @@ function HatchEditContent() {
       // Use the existing deployAgent logic but make it update instead
       const agentData = transformToUpdateData();
 
-      const response = await fetch(`https://lead-management-j828.onrender.com/api/agents/${id}`, {
+      const response = await fetch(`https://lead-management-staging-backend.onrender.com/api/agents/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -164,7 +164,7 @@ function HatchEditContent() {
       const currentFormData = transformToUpdateData();
 
       // Update the agent temporarily for testing (without saving)
-      const tempUpdateResponse = await fetch(`https://lead-management-j828.onrender.com/api/agents/${id}`, {
+      const tempUpdateResponse = await fetch(`https://lead-management-staging-backend.onrender.com/api/agents/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -177,7 +177,7 @@ function HatchEditContent() {
       }
 
       // Now test with the updated configuration
-      const response = await fetch(`https://lead-management-j828.onrender.com/api/agents/${id}/chat`, {
+      const response = await fetch(`https://lead-management-staging-backend.onrender.com/api/agents/${id}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

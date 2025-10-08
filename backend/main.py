@@ -18,6 +18,7 @@ from api.messages import router as messages_router
 from api.agent_internals import router as agent_internals_router
 from api.prompt_templates import router as prompt_templates_router
 from api.knowledge_base import router as knowledge_base_router
+from api.webhooks import router as webhooks_router
 
 # Load environment variables
 load_dotenv()
@@ -30,7 +31,7 @@ app = FastAPI(
 )
 
 # Configure CORS
-origins = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,https://lead-management-staging-frontend.onrender.com").split(",")
 
 app.add_middleware(
     CORSMiddleware,
@@ -54,6 +55,7 @@ app.include_router(messages_router)
 app.include_router(agent_internals_router)
 app.include_router(prompt_templates_router)
 app.include_router(knowledge_base_router)
+app.include_router(webhooks_router)
 
 
 @app.get("/")

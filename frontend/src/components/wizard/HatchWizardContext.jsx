@@ -364,7 +364,7 @@ export const HatchWizardProvider = ({ children }) => {
         throw new Error('Prompt template is required');
       }
 
-      const apiUrl = 'https://lead-management-j828.onrender.com';
+      const apiUrl = 'https://lead-management-staging-backend.onrender.com';
       const deployUrl = `${apiUrl}/api/agents/`;
       console.log('Making deployment request to:', deployUrl);
 

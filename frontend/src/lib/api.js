@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: 'https://lead-management-j828.onrender.com',
+  baseURL: 'https://lead-management-staging-backend.onrender.com',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

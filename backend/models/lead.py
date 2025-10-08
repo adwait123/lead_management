@@ -10,10 +10,13 @@ class Lead(Base):
 
     # Primary fields
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False, index=True)
+    name = Column(String(255), nullable=True, index=True)  # Make nullable for first_name/last_name split
+    first_name = Column(String(255), nullable=True)
+    last_name = Column(String(255), nullable=True)
     email = Column(String(255), nullable=False, index=True)
     phone = Column(String(50), nullable=True)
     company = Column(String(255), nullable=True, index=True)
+    external_id = Column(String(255), nullable=True, index=True)  # For Yelp lead ID, Zapier IDs, etc.
 
     # Lead details
     service_requested = Column(String(255), nullable=True)
@@ -42,9 +45,12 @@ class Lead(Base):
         return {
             "id": self.id,
             "name": self.name,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
             "email": self.email,
             "phone": self.phone,
             "company": self.company,
+            "external_id": self.external_id,
             "service_requested": self.service_requested,
             "status": self.status,
             "source": self.source,

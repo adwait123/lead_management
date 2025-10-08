@@ -129,7 +129,7 @@ export function AIInstructionsTab() {
       console.log(`🔍 Fetching template: ${templateId} for use case: ${useCase}`);
 
       // Use the same API URL pattern as rest of the application
-      const url = `https://lead-management-j828.onrender.com/api/prompt-templates/${templateId}`;
+      const url = `https://lead-management-staging-backend.onrender.com/api/prompt-templates/${templateId}`;
       console.log(`📡 API URL: ${url}`);
 
       const response = await fetch(url);
@@ -300,7 +300,7 @@ export function AIInstructionsTab() {
 
     setIsGenerating(true);
     try {
-      const response = await fetch('https://lead-management-j828.onrender.com/api/agents/generate-prompt', {
+      const response = await fetch('https://lead-management-staging-backend.onrender.com/api/agents/generate-prompt', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -348,7 +348,7 @@ export function AIInstructionsTab() {
         target_customers: 'General customers'
       };
 
-      const response = await fetch('https://lead-management-j828.onrender.com/api/agents/generate-scenario-prompt', {
+      const response = await fetch('https://lead-management-staging-backend.onrender.com/api/agents/generate-scenario-prompt', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

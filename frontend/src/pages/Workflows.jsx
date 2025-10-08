@@ -52,7 +52,7 @@ export function Workflows() {
 
   const fetchAgents = async () => {
     try {
-      const response = await fetch('https://lead-management-j828.onrender.com/api/agents/')
+      const response = await fetch('https://lead-management-staging-backend.onrender.com/api/agents/')
       if (response.ok) {
         const data = await response.json()
         setAgents(data.agents || [])

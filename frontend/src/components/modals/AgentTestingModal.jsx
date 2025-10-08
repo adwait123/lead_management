@@ -113,7 +113,7 @@ export function AgentTestingModal({ isOpen, onClose, agentConfig, wizardData }) 
         }));
 
       // Try to get real OpenAI response first
-      const apiUrl = 'https://lead-management-j828.onrender.com';
+      const apiUrl = 'https://lead-management-staging-backend.onrender.com';
       const response = await fetch(`${apiUrl}/api/agents/1/chat`, {
         method: 'POST',
         headers: {
