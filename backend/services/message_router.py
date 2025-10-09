@@ -237,7 +237,7 @@ class MessageRouter:
 
         for trigger in agent.triggers:
             if isinstance(trigger, dict):
-                trigger_event = trigger.get('event') or trigger.get('type')
+                trigger_event = trigger.get('event') or trigger.get('type') or trigger.get('event_type')
             else:
                 trigger_event = trigger
 
