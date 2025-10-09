@@ -202,8 +202,8 @@ class AgentService:
 
         context = {
             "lead": {
-                "first_name": lead.first_name or lead.name.split()[0] if lead.name else "there",
-                "last_name": lead.last_name or "",
+                "first_name": getattr(lead, 'first_name', None) or (lead.name.split()[0] if lead.name else "there"),
+                "last_name": getattr(lead, 'last_name', None) or "",
                 "full_name": lead.name or "Customer",
                 "email": lead.email,
                 "phone": lead.phone,
@@ -268,7 +268,8 @@ class AgentService:
 
         context = {
             "lead": {
-                "first_name": lead.first_name or lead.name.split()[0] if lead.name else "there",
+                "first_name": getattr(lead, 'first_name', None) or (lead.name.split()[0] if lead.name else "there"),
+                "last_name": getattr(lead, 'last_name', None) or "",
                 "full_name": lead.name or "Customer",
                 "service_requested": lead.service_requested,
                 "source": lead.source

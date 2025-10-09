@@ -401,10 +401,10 @@ class MessageRouter:
                 agent_session_id=session.id,
                 lead_id=lead_id,
                 content=message,
-                message_type=message_type,
                 metadata=metadata or {},
                 external_conversation_id=metadata.get("yelp_conversation_id") if metadata else None,
-                external_platform=metadata.get("platform") if metadata else None
+                external_platform=metadata.get("platform") if metadata else None,
+                message_type=message_type
             )
 
             # Save to database
