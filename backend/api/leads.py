@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from typing import Optional
 import math
+import logging
 from datetime import datetime
+from pydantic import ValidationError
 
 from models.database import get_db
 from models.lead import Lead
@@ -18,6 +20,9 @@ from models.schemas import (
     LeadFiltersSchema,
     NoteCreateSchema
 )
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/leads", tags=["leads"])
 
@@ -62,8 +67,17 @@ async def get_leads(
     # Calculate total pages
     total_pages = math.ceil(total / per_page)
 
+    # Convert leads to response schema with error handling
+    valid_leads = []
+    for lead in leads:
+        try:
+            valid_leads.append(LeadResponseSchema.from_orm(lead))
+        except ValidationError as e:
+            logger.warning(f"Skipping lead {lead.id} due to validation error: {e}")
+            continue
+
     return LeadListResponseSchema(
-        leads=[LeadResponseSchema.from_orm(lead) for lead in leads],
+        leads=valid_leads,
         total=total,
         page=page,
         per_page=per_page,
@@ -76,7 +90,12 @@ async def get_lead(lead_id: int, db: Session = Depends(get_db)):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    return LeadResponseSchema.from_orm(lead)
+
+    try:
+        return LeadResponseSchema.from_orm(lead)
+    except ValidationError as e:
+        logger.error(f"Lead {lead_id} has invalid data: {e}")
+        raise HTTPException(status_code=422, detail=f"Lead data validation failed: {str(e)}")
 
 @router.post("/", response_model=LeadResponseSchema)
 async def create_lead(lead_data: LeadCreateSchema, db: Session = Depends(get_db)):
@@ -104,7 +123,11 @@ async def create_lead(lead_data: LeadCreateSchema, db: Session = Depends(get_db)
     db.commit()
     db.refresh(lead)
 
-    return LeadResponseSchema.from_orm(lead)
+    try:
+        return LeadResponseSchema.from_orm(lead)
+    except ValidationError as e:
+        logger.error(f"Created lead {lead.id} has invalid data: {e}")
+        raise HTTPException(status_code=422, detail=f"Lead data validation failed: {str(e)}")
 
 @router.put("/{lead_id}", response_model=LeadResponseSchema)
 async def update_lead(lead_id: int, lead_data: LeadUpdateSchema, db: Session = Depends(get_db)):
@@ -121,7 +144,11 @@ async def update_lead(lead_id: int, lead_data: LeadUpdateSchema, db: Session = D
     db.commit()
     db.refresh(lead)
 
-    return LeadResponseSchema.from_orm(lead)
+    try:
+        return LeadResponseSchema.from_orm(lead)
+    except ValidationError as e:
+        logger.error(f"Updated lead {lead_id} has invalid data: {e}")
+        raise HTTPException(status_code=422, detail=f"Lead data validation failed: {str(e)}")
 
 @router.delete("/{lead_id}")
 async def delete_lead(lead_id: int, db: Session = Depends(get_db)):
