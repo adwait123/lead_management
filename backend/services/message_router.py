@@ -2,13 +2,14 @@
 Message Router Service for handling conversation routing to active agent sessions
 """
 import logging
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from sqlalchemy.orm import Session
 from datetime import datetime
 
 from models.agent_session import AgentSession
 from models.agent import Agent
 from models.lead import Lead
+from models.message import Message
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ class MessageRouter:
     def route_message(self, lead_id: int, message: str, message_type: str = "text",
                      metadata: Dict[str, Any] = None) -> Dict[str, Any]:
         """
-        Route an incoming message to the appropriate agent session
+        Route an incoming message to the appropriate agent session and persist it
 
         Args:
             lead_id: ID of the lead sending the message
@@ -38,11 +39,19 @@ class MessageRouter:
             active_session = self._get_active_session(lead_id)
 
             if active_session:
-                # Route to existing session
+                # Route to existing session and persist message
                 result = self._route_to_existing_session(active_session, message, message_type, metadata)
+                if result["success"]:
+                    # Persist the incoming message
+                    self._persist_incoming_message(active_session, lead_id, message, message_type, metadata)
             else:
                 # No active session - determine if we should create one
                 result = self._handle_new_conversation(lead_id, message, message_type, metadata)
+                if result["success"] and result.get("session_id"):
+                    # Persist the incoming message to the new session
+                    new_session = self.db.query(AgentSession).filter(AgentSession.id == result["session_id"]).first()
+                    if new_session:
+                        self._persist_incoming_message(new_session, lead_id, message, message_type, metadata)
 
             return result
 
@@ -376,3 +385,124 @@ class MessageRouter:
             self.db.rollback()
             logger.error(f"Error updating agent response for session {session_id}: {str(e)}")
             return False
+
+    def _persist_incoming_message(
+        self,
+        session: AgentSession,
+        lead_id: int,
+        message: str,
+        message_type: str,
+        metadata: Dict[str, Any] = None
+    ) -> Optional[Message]:
+        """Persist an incoming message from a lead"""
+        try:
+            # Create message record
+            incoming_message = Message.create_lead_message(
+                agent_session_id=session.id,
+                lead_id=lead_id,
+                content=message,
+                message_type=message_type,
+                metadata=metadata or {},
+                external_conversation_id=metadata.get("yelp_conversation_id") if metadata else None,
+                external_platform=metadata.get("platform") if metadata else None
+            )
+
+            # Save to database
+            self.db.add(incoming_message)
+            self.db.commit()
+            self.db.refresh(incoming_message)
+
+            logger.info(f"Persisted incoming message {incoming_message.id} for session {session.id}")
+            return incoming_message
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error persisting incoming message for session {session.id}: {str(e)}")
+            return None
+
+    def get_conversation_history(
+        self,
+        session_id: int = None,
+        lead_id: int = None,
+        limit: int = 50,
+        include_system_messages: bool = False
+    ) -> List[Dict[str, Any]]:
+        """
+        Get conversation history for a session or lead
+
+        Args:
+            session_id: Filter by agent session ID
+            lead_id: Filter by lead ID (if no session_id provided)
+            limit: Maximum number of messages to return
+            include_system_messages: Whether to include system messages
+
+        Returns:
+            List of message dictionaries ordered by creation time
+        """
+        try:
+            query = self.db.query(Message)
+
+            if session_id:
+                query = query.filter(Message.agent_session_id == session_id)
+            elif lead_id:
+                query = query.filter(Message.lead_id == lead_id)
+            else:
+                logger.error("Either session_id or lead_id must be provided")
+                return []
+
+            if not include_system_messages:
+                query = query.filter(Message.sender_type != "system")
+
+            messages = query.order_by(Message.created_at.asc()).limit(limit).all()
+
+            return [msg.to_dict() for msg in messages]
+
+        except Exception as e:
+            logger.error(f"Error getting conversation history: {str(e)}")
+            return []
+
+    def get_message_statistics(self, session_id: int) -> Dict[str, Any]:
+        """Get message statistics for a session"""
+        try:
+            # Count messages by sender type
+            agent_messages = self.db.query(Message).filter(
+                Message.agent_session_id == session_id,
+                Message.sender_type == "agent"
+            ).count()
+
+            lead_messages = self.db.query(Message).filter(
+                Message.agent_session_id == session_id,
+                Message.sender_type == "lead"
+            ).count()
+
+            system_messages = self.db.query(Message).filter(
+                Message.agent_session_id == session_id,
+                Message.sender_type == "system"
+            ).count()
+
+            # Get first and last message times
+            first_message = self.db.query(Message).filter(
+                Message.agent_session_id == session_id
+            ).order_by(Message.created_at.asc()).first()
+
+            last_message = self.db.query(Message).filter(
+                Message.agent_session_id == session_id
+            ).order_by(Message.created_at.desc()).first()
+
+            return {
+                "session_id": session_id,
+                "total_messages": agent_messages + lead_messages + system_messages,
+                "agent_messages": agent_messages,
+                "lead_messages": lead_messages,
+                "system_messages": system_messages,
+                "first_message_at": first_message.created_at.isoformat() if first_message else None,
+                "last_message_at": last_message.created_at.isoformat() if last_message else None,
+                "conversation_duration": None  # Could calculate if needed
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting message statistics for session {session_id}: {str(e)}")
+            return {
+                "session_id": session_id,
+                "error": str(e)
+            }

@@ -2,6 +2,7 @@
 Workflow Service for handling agent trigger detection and session management
 """
 import logging
+import asyncio
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -134,6 +135,9 @@ class WorkflowService:
             self.db.add(session)
             self.db.commit()
             self.db.refresh(session)
+
+            # Generate initial message asynchronously
+            self._trigger_initial_message_generation(session.id, lead, event_data)
 
             return session.id
         except Exception as e:
@@ -276,3 +280,97 @@ class WorkflowService:
             trigger_summary["trigger_count"] = len(agent.triggers)
 
         return trigger_summary
+
+    def _trigger_initial_message_generation(self, session_id: int, lead: Lead, event_data: Dict[str, Any]):
+        """Trigger initial message generation for a new agent session"""
+        try:
+            # Import here to avoid circular imports
+            from services.agent_service import AgentService
+
+            # Create agent service with a new DB session to avoid conflicts
+            agent_service = AgentService(self.db)
+
+            # Extract project details from event data for context
+            project_details = event_data.get('form_data', {})
+
+            # Build lead data dictionary
+            lead_data = {
+                "id": lead.id,
+                "name": lead.name,
+                "first_name": lead.first_name,
+                "last_name": lead.last_name,
+                "email": lead.email,
+                "phone": lead.phone,
+                "company": lead.company,
+                "service_requested": lead.service_requested,
+                "source": lead.source
+            }
+
+            # Schedule async message generation
+            # Note: We run this in a background task to avoid blocking the webhook response
+            asyncio.create_task(
+                self._generate_initial_message_async(
+                    agent_service, session_id, lead_data, project_details
+                )
+            )
+
+            logger.info(f"Scheduled initial message generation for session {session_id}")
+
+        except Exception as e:
+            logger.error(f"Error triggering initial message generation for session {session_id}: {str(e)}")
+
+    async def _generate_initial_message_async(
+        self,
+        agent_service: 'AgentService',
+        session_id: int,
+        lead_data: Dict[str, Any],
+        project_details: Dict[str, Any]
+    ):
+        """Asynchronously generate the initial message"""
+        try:
+            logger.info(f"Starting initial message generation for session {session_id}")
+
+            # Generate the initial message
+            message = await agent_service.generate_initial_message(
+                agent_session_id=session_id,
+                lead_data=lead_data,
+                project_details=project_details
+            )
+
+            if message:
+                logger.info(f"Successfully generated initial message {message.id} for session {session_id}")
+            else:
+                logger.error(f"Failed to generate initial message for session {session_id}")
+
+        except Exception as e:
+            logger.error(f"Error in async initial message generation for session {session_id}: {str(e)}")
+
+    def generate_initial_message_sync(self, session_id: int) -> bool:
+        """
+        Synchronously generate initial message for a session (for testing/manual triggering)
+
+        Args:
+            session_id: ID of the agent session
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Get session to find lead and context
+            session = self.db.query(AgentSession).filter(AgentSession.id == session_id).first()
+            if not session:
+                logger.error(f"Session {session_id} not found")
+                return False
+
+            lead = self.db.query(Lead).filter(Lead.id == session.lead_id).first()
+            if not lead:
+                logger.error(f"Lead {session.lead_id} not found for session {session_id}")
+                return False
+
+            # Trigger message generation
+            self._trigger_initial_message_generation(session_id, lead, session.initial_context or {})
+            return True
+
+        except Exception as e:
+            logger.error(f"Error in sync initial message generation for session {session_id}: {str(e)}")
+            return False

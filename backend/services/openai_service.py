@@ -26,7 +26,6 @@ class OpenAIService:
             logger.warning("OPENAI_API_KEY not found in environment variables")
             self.available = False
         else:
-            openai.api_key = self.api_key
             self.available = True
 
     def is_available(self) -> bool:
@@ -73,8 +72,11 @@ class OpenAIService:
             # Add conversation messages
             formatted_messages.extend(messages)
 
-            # Make API call using old API format
-            response = openai.ChatCompletion.create(
+            # Make API call using new API format
+            from openai import OpenAI
+            client = OpenAI(api_key=self.api_key)
+
+            response = client.chat.completions.create(
                 model=model,
                 messages=formatted_messages,
                 temperature=temperature,
@@ -153,7 +155,10 @@ Format the response as a complete, ready-to-use system prompt."""
         user_prompt = f"Create a detailed AI agent prompt based on this summary: {summary}"
 
         try:
-            response = openai.ChatCompletion.create(
+            from openai import OpenAI
+            client = OpenAI(api_key=self.api_key)
+
+            response = client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -251,7 +256,10 @@ Make the prompt comprehensive but practical for real-world use."""
         user_prompt = f"Create a complete AI agent setup for this scenario: {scenario_description}"
 
         try:
-            response = openai.ChatCompletion.create(
+            from openai import OpenAI
+            client = OpenAI(api_key=self.api_key)
+
+            response = client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -339,7 +347,10 @@ Respond with JSON containing:
 - "reasoning": Brief explanation for each tool recommendation"""
 
         try:
-            response = openai.ChatCompletion.create(
+            from openai import OpenAI
+            client = OpenAI(api_key=self.api_key)
+
+            response = client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": system_prompt},
