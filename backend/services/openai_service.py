@@ -72,26 +72,60 @@ class OpenAIService:
             # Add conversation messages
             formatted_messages.extend(messages)
 
-            # Make API call using new API format
-            from openai import OpenAI
-            client = OpenAI(api_key=self.api_key)
+            # Try new API format first (v1.0+), fallback to old format
+            try:
+                from openai import OpenAI
+                client = OpenAI(api_key=self.api_key)
 
-            response = client.chat.completions.create(
-                model=model,
-                messages=formatted_messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=formatted_messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
+            except ImportError:
+                # Fallback to old OpenAI API format (v0.x)
+                import openai
+                openai.api_key = self.api_key
+
+                response = openai.ChatCompletion.create(
+                    model=model,
+                    messages=formatted_messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
+
+            # Handle response format differences between old and new versions
+            if hasattr(response, 'choices') and hasattr(response.choices[0], 'message'):
+                # New format (v1.0+)
+                content = response.choices[0].message.content
+                finish_reason = response.choices[0].finish_reason
+                if hasattr(response, 'usage'):
+                    usage = {
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                        "total_tokens": response.usage.total_tokens
+                    }
+                else:
+                    usage = None
+            else:
+                # Old format (v0.x)
+                content = response['choices'][0]['message']['content']
+                finish_reason = response['choices'][0]['finish_reason']
+                if 'usage' in response:
+                    usage = {
+                        "prompt_tokens": response['usage']['prompt_tokens'],
+                        "completion_tokens": response['usage']['completion_tokens'],
+                        "total_tokens": response['usage']['total_tokens']
+                    }
+                else:
+                    usage = None
 
             return {
-                "response": response.choices[0].message.content,
+                "response": content,
                 "model": model,
-                "usage": {
-                    "prompt_tokens": response.usage.prompt_tokens,
-                    "completion_tokens": response.usage.completion_tokens,
-                    "total_tokens": response.usage.total_tokens
-                },
-                "finish_reason": response.choices[0].finish_reason,
+                "usage": usage,
+                "finish_reason": finish_reason,
                 "success": True,
                 "error": None
             }
@@ -155,30 +189,66 @@ Format the response as a complete, ready-to-use system prompt."""
         user_prompt = f"Create a detailed AI agent prompt based on this summary: {summary}"
 
         try:
-            from openai import OpenAI
-            client = OpenAI(api_key=self.api_key)
+            # Try new API format first (v1.0+), fallback to old format
+            try:
+                from openai import OpenAI
+                client = OpenAI(api_key=self.api_key)
 
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.7,
-                max_tokens=1500
-            )
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.7,
+                    max_tokens=1500
+                )
+            except ImportError:
+                # Fallback to old OpenAI API format (v0.x)
+                import openai
+                openai.api_key = self.api_key
+
+                response = openai.ChatCompletion.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.7,
+                    max_tokens=1500
+                )
+
+            # Handle response format differences between old and new versions
+            if hasattr(response, 'choices') and hasattr(response.choices[0], 'message'):
+                # New format (v1.0+)
+                content = response.choices[0].message.content
+                if hasattr(response, 'usage'):
+                    usage = {
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                        "total_tokens": response.usage.total_tokens
+                    }
+                else:
+                    usage = None
+            else:
+                # Old format (v0.x)
+                content = response['choices'][0]['message']['content']
+                if 'usage' in response:
+                    usage = {
+                        "prompt_tokens": response['usage']['prompt_tokens'],
+                        "completion_tokens": response['usage']['completion_tokens'],
+                        "total_tokens": response['usage']['total_tokens']
+                    }
+                else:
+                    usage = None
 
             return {
-                "generated_prompt": response.choices[0].message.content,
+                "generated_prompt": content,
                 "summary": summary,
                 "agent_type": agent_type,
                 "industry": industry,
                 "model": model,
-                "usage": {
-                    "prompt_tokens": response.usage.prompt_tokens,
-                    "completion_tokens": response.usage.completion_tokens,
-                    "total_tokens": response.usage.total_tokens
-                },
+                "usage": usage,
                 "success": True,
                 "error": None
             }
@@ -256,26 +326,49 @@ Make the prompt comprehensive but practical for real-world use."""
         user_prompt = f"Create a complete AI agent setup for this scenario: {scenario_description}"
 
         try:
-            from openai import OpenAI
-            client = OpenAI(api_key=self.api_key)
-
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.8,
-                max_tokens=2000
-            )
-
-            # Try to parse the JSON response
+            # Try new API format first (v1.0+), fallback to old format
             try:
-                generated_data = json.loads(response.choices[0].message.content)
+                from openai import OpenAI
+                client = OpenAI(api_key=self.api_key)
+
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.8,
+                    max_tokens=2000
+                )
+            except ImportError:
+                # Fallback to old OpenAI API format (v0.x)
+                import openai
+                openai.api_key = self.api_key
+
+                response = openai.ChatCompletion.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.8,
+                    max_tokens=2000
+                )
+
+            # Try to parse the JSON response - handle both old and new response formats
+            try:
+                if hasattr(response, 'choices') and hasattr(response.choices[0], 'message'):
+                    # New format (v1.0+)
+                    content = response.choices[0].message.content
+                else:
+                    # Old format (v0.x)
+                    content = response['choices'][0]['message']['content']
+
+                generated_data = json.loads(content)
             except json.JSONDecodeError:
                 # If JSON parsing fails, return the raw content
                 generated_data = {
-                    "system_prompt": response.choices[0].message.content,
+                    "system_prompt": content,
                     "recommended_tools": ["/appointment", "/transfer", "/bailout", "/knowledge"],
                     "personality_traits": ["professional", "helpful"],
                     "communication_mode": "both",
@@ -284,16 +377,28 @@ Make the prompt comprehensive but practical for real-world use."""
                     "emergency_handling": "Transfer to emergency team"
                 }
 
+            # Handle usage tracking for both old and new formats
+            if hasattr(response, 'usage'):
+                usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                }
+            elif 'usage' in response:
+                usage = {
+                    "prompt_tokens": response['usage']['prompt_tokens'],
+                    "completion_tokens": response['usage']['completion_tokens'],
+                    "total_tokens": response['usage']['total_tokens']
+                }
+            else:
+                usage = None
+
             return {
                 "scenario_description": scenario_description,
                 "generated_data": generated_data,
                 "business_context": business_context,
                 "model": model,
-                "usage": {
-                    "prompt_tokens": response.usage.prompt_tokens,
-                    "completion_tokens": response.usage.completion_tokens,
-                    "total_tokens": response.usage.total_tokens
-                },
+                "usage": usage,
                 "success": True,
                 "error": None
             }
@@ -347,21 +452,45 @@ Respond with JSON containing:
 - "reasoning": Brief explanation for each tool recommendation"""
 
         try:
-            from openai import OpenAI
-            client = OpenAI(api_key=self.api_key)
+            # Try new API format first (v1.0+), fallback to old format
+            try:
+                from openai import OpenAI
+                client = OpenAI(api_key=self.api_key)
 
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Analyze this prompt: {prompt}"}
-                ],
-                temperature=0.3,
-                max_tokens=500
-            )
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"Analyze this prompt: {prompt}"}
+                    ],
+                    temperature=0.3,
+                    max_tokens=500
+                )
+            except ImportError:
+                # Fallback to old OpenAI API format (v0.x)
+                import openai
+                openai.api_key = self.api_key
+
+                response = openai.ChatCompletion.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"Analyze this prompt: {prompt}"}
+                    ],
+                    temperature=0.3,
+                    max_tokens=500
+                )
 
             try:
-                analysis = json.loads(response.choices[0].message.content)
+                # Handle both old and new response formats
+                if hasattr(response, 'choices') and hasattr(response.choices[0], 'message'):
+                    # New format (v1.0+)
+                    content = response.choices[0].message.content
+                else:
+                    # Old format (v0.x)
+                    content = response['choices'][0]['message']['content']
+
+                analysis = json.loads(content)
             except json.JSONDecodeError:
                 # Fallback if JSON parsing fails
                 analysis = {
