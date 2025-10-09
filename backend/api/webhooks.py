@@ -149,6 +149,46 @@ async def handle_yelp_lead_created(
                 form_data=project_details
             )
             logger.info(f"Triggered workflow for lead {lead.id}, created sessions: {session_ids}")
+
+            # Generate initial agent messages for each created session
+            if session_ids:
+                from services.agent_service import AgentService
+                agent_service = AgentService(db)
+
+                for session_id in session_ids:
+                    try:
+                        logger.info(f"Generating initial message for session {session_id}")
+
+                        # Build lead data for initial message
+                        lead_data = {
+                            "id": lead.id,
+                            "name": lead.name,
+                            "first_name": lead.first_name,
+                            "last_name": lead.last_name,
+                            "email": lead.email,
+                            "phone": lead.phone,
+                            "company": lead.company,
+                            "service_requested": lead.service_requested,
+                            "source": lead.source
+                        }
+
+                        # Generate initial message immediately
+                        initial_message = await agent_service.generate_initial_message(
+                            agent_session_id=session_id,
+                            lead_data=lead_data,
+                            project_details=project_details
+                        )
+
+                        if initial_message:
+                            logger.info(f"Generated initial message {initial_message.id} for session {session_id}")
+                        else:
+                            logger.error(f"Failed to generate initial message for session {session_id}")
+
+                    except Exception as e:
+                        logger.error(f"Error generating initial message for session {session_id}: {str(e)}")
+                        # Don't fail the entire webhook if one message fails
+                        continue
+
         except Exception as e:
             logger.error(f"Failed to trigger workflow for lead {lead.id}: {str(e)}")
             # Don't fail the webhook if workflow fails, just log the error
