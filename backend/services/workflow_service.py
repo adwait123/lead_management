@@ -77,7 +77,7 @@ class WorkflowService:
         for trigger in agent.triggers:
             # Handle different trigger formats
             if isinstance(trigger, dict):
-                trigger_event = trigger.get('event') or trigger.get('type')
+                trigger_event = trigger.get('event') or trigger.get('type') or trigger.get('event_type')
             else:
                 trigger_event = trigger
 
@@ -264,8 +264,8 @@ class WorkflowService:
             for trigger in agent.triggers:
                 if isinstance(trigger, dict):
                     trigger_info = {
-                        "event": trigger.get('event') or trigger.get('type'),
-                        "condition": trigger.get('condition'),
+                        "event": trigger.get('event') or trigger.get('type') or trigger.get('event_type'),
+                        "condition": trigger.get('condition') or trigger.get('conditions'),
                         "active": trigger.get('active', True)
                     }
                 else:
