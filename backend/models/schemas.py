@@ -51,6 +51,7 @@ class LeadUpdateSchema(BaseModel):
 
 class LeadResponseSchema(LeadBaseSchema):
     id: int
+    external_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     notes: List[Dict[str, Any]] = []
