@@ -173,6 +173,10 @@ class Message(Base):
         """Check if this is a system message"""
         return self.sender_type == "system"
 
+    def is_from_business_owner(self) -> bool:
+        """Check if this message is from a business owner"""
+        return self.sender_type == "business_owner"
+
     def get_display_content(self, max_length: int = 100) -> str:
         """Get truncated content for display purposes"""
         if len(self.content) <= max_length:
@@ -205,6 +209,22 @@ class Message(Base):
             content=content,
             sender_type="lead",
             external_conversation_id=external_conversation_id,
+            message_type=kwargs.get('message_type', 'text'),
+            message_metadata=metadata or {},
+            **kwargs
+        )
+
+    @classmethod
+    def create_business_owner_message(cls, agent_session_id: int, lead_id: int, content: str,
+                                    business_owner_name: str = None, metadata: dict = None, **kwargs):
+        """Factory method to create business owner messages"""
+        return cls(
+            agent_session_id=agent_session_id,
+            lead_id=lead_id,
+            agent_id=None,
+            content=content,
+            sender_type="business_owner",
+            sender_name=business_owner_name or "Business Owner",
             message_type=kwargs.get('message_type', 'text'),
             message_metadata=metadata or {},
             **kwargs

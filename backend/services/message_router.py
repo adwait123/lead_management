@@ -65,10 +65,10 @@ class MessageRouter:
             }
 
     def _get_active_session(self, lead_id: int) -> Optional[AgentSession]:
-        """Get the active agent session for a lead"""
+        """Get the active agent session for a lead (includes taken_over sessions)"""
         return self.db.query(AgentSession).filter(
             AgentSession.lead_id == lead_id,
-            AgentSession.session_status == "active"
+            AgentSession.session_status.in_(["active", "taken_over"])
         ).first()
 
     def _route_to_existing_session(self, session: AgentSession, message: str,
@@ -93,22 +93,28 @@ class MessageRouter:
             agent = self.db.query(Agent).filter(Agent.id == session.agent_id).first()
             lead = self.db.query(Lead).filter(Lead.id == session.lead_id).first()
 
+            # Check if session is taken over by business owner
+            is_taken_over = session.session_status == "taken_over"
+            should_respond = not is_taken_over  # Agent should not respond if taken over
+
             return {
                 "success": True,
-                "routing_decision": "existing_session",
+                "routing_decision": "existing_session_taken_over" if is_taken_over else "existing_session",
                 "session_id": session.id,
                 "agent_id": session.agent_id,
                 "agent_name": agent.name if agent else "Unknown",
                 "lead_name": lead.name if lead else "Unknown",
                 "message_count": session.message_count,
                 "session_goal": session.session_goal,
-                "should_respond": True,
+                "should_respond": should_respond,
+                "taken_over": is_taken_over,
                 "agent_context": {
                     "session_goal": session.session_goal,
                     "message_count": session.message_count,
                     "session_created": session.created_at.isoformat() if session.created_at else None,
                     "initial_context": session.initial_context,
-                    "trigger_type": session.trigger_type
+                    "trigger_type": session.trigger_type,
+                    "taken_over": is_taken_over
                 }
             }
 
@@ -394,18 +400,32 @@ class MessageRouter:
         message_type: str,
         metadata: Dict[str, Any] = None
     ) -> Optional[Message]:
-        """Persist an incoming message from a lead"""
+        """Persist an incoming message from a lead or business owner"""
         try:
-            # Create message record
-            incoming_message = Message.create_lead_message(
-                agent_session_id=session.id,
-                lead_id=lead_id,
-                content=message,
-                metadata=metadata or {},
-                external_conversation_id=metadata.get("yelp_conversation_id") if metadata else None,
-                external_platform=metadata.get("platform") if metadata else None,
-                message_type=message_type
-            )
+            # Check if this is a business owner message based on metadata
+            if metadata and metadata.get("sender") == "business_owner":
+                # Create business owner message
+                incoming_message = Message.create_business_owner_message(
+                    agent_session_id=session.id,
+                    lead_id=lead_id,
+                    content=message,
+                    business_owner_name=metadata.get("business_owner_name"),
+                    metadata=metadata or {},
+                    external_conversation_id=metadata.get("yelp_conversation_id"),
+                    external_platform=metadata.get("platform", "web_ui"),
+                    message_type=message_type
+                )
+            else:
+                # Create lead message (default)
+                incoming_message = Message.create_lead_message(
+                    agent_session_id=session.id,
+                    lead_id=lead_id,
+                    content=message,
+                    metadata=metadata or {},
+                    external_conversation_id=metadata.get("yelp_conversation_id") if metadata else None,
+                    external_platform=metadata.get("platform") if metadata else None,
+                    message_type=message_type
+                )
 
             # Save to database
             self.db.add(incoming_message)
