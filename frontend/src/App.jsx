@@ -7,6 +7,8 @@ import { Workflows } from './pages/Workflows'
 import { Integrations } from './pages/Integrations'
 import { Settings } from './pages/Settings'
 import { Calendar } from './pages/Calendar'
+import { Conversations } from './pages/Conversations'
+import { LeadChat } from './pages/LeadChat'
 import { HatchAgentWizard } from './components/wizard/HatchAgentWizard'
 import { HatchAgentConfigSimple } from './components/wizard/HatchAgentConfigSimple'
 import { HatchAgentEdit } from './components/wizard/HatchAgentEdit'
@@ -14,20 +16,20 @@ import { HatchAgentEdit } from './components/wizard/HatchAgentEdit'
 function App() {
   return (
     <BrowserRouter>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/leads" element={<Leads />} />
-          <Route path="/agents" element={<Agents />} />
-          <Route path="/agents/new" element={<HatchAgentWizard />} />
-          <Route path="/agents/config" element={<HatchAgentConfigSimple />} />
-          <Route path="/agents/edit/:id" element={<HatchAgentEdit />} />
-          <Route path="/workflows" element={<Workflows />} />
-          <Route path="/integrations" element={<Integrations />} />
-          <Route path="/calendar" element={<Calendar />} />
-          <Route path="/settings" element={<Settings />} />
-        </Routes>
-      </Layout>
+      <Routes>
+        <Route path="/" element={<Layout><Dashboard /></Layout>} />
+        <Route path="/leads" element={<Layout><Leads /></Layout>} />
+        <Route path="/leads/:leadId/chat" element={<LeadChat />} />
+        <Route path="/conversations" element={<Layout><Conversations /></Layout>} />
+        <Route path="/agents" element={<Layout><Agents /></Layout>} />
+        <Route path="/agents/new" element={<Layout><HatchAgentWizard /></Layout>} />
+        <Route path="/agents/config" element={<Layout><HatchAgentConfigSimple /></Layout>} />
+        <Route path="/agents/edit/:id" element={<Layout><HatchAgentEdit /></Layout>} />
+        <Route path="/workflows" element={<Layout><Workflows /></Layout>} />
+        <Route path="/integrations" element={<Layout><Integrations /></Layout>} />
+        <Route path="/calendar" element={<Layout><Calendar /></Layout>} />
+        <Route path="/settings" element={<Layout><Settings /></Layout>} />
+      </Routes>
     </BrowserRouter>
   )
 }

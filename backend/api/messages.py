@@ -294,3 +294,241 @@ async def get_message_stats(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error getting message stats: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get message statistics")
+
+# Session Control Schemas
+class SessionTakeoverSchema(BaseModel):
+    business_owner_id: Optional[str] = "default"  # Could be user ID in future
+    reason: Optional[str] = "Manual takeover"
+
+class SessionControlResponseSchema(BaseModel):
+    success: bool
+    session_id: int
+    previous_status: str
+    new_status: str
+    message: str
+    timestamp: str
+
+@router.post("/session/{session_id}/takeover", response_model=SessionControlResponseSchema)
+async def takeover_session(
+    session_id: int,
+    takeover_data: SessionTakeoverSchema,
+    db: Session = Depends(get_db)
+):
+    """Take over a session from the agent (business owner control)"""
+
+    try:
+        # Get the session
+        session = db.query(AgentSession).filter(AgentSession.id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        # Store previous status
+        previous_status = session.session_status
+
+        # Update session status to indicate takeover
+        session.session_status = "taken_over"
+        session.business_owner_active = True
+        session.business_owner_takeover_at = datetime.utcnow()
+        session.takeover_reason = takeover_data.reason
+
+        # Add takeover note to session
+        if hasattr(session, 'notes') and session.notes:
+            session.notes.append({
+                "timestamp": datetime.utcnow().isoformat(),
+                "type": "takeover",
+                "message": f"Business owner took over session. Reason: {takeover_data.reason}",
+                "business_owner_id": takeover_data.business_owner_id
+            })
+        else:
+            session.notes = [{
+                "timestamp": datetime.utcnow().isoformat(),
+                "type": "takeover",
+                "message": f"Business owner took over session. Reason: {takeover_data.reason}",
+                "business_owner_id": takeover_data.business_owner_id
+            }]
+
+        db.commit()
+        db.refresh(session)
+
+        logger.info(f"Session {session_id} taken over by business owner. Previous status: {previous_status}")
+
+        return SessionControlResponseSchema(
+            success=True,
+            session_id=session_id,
+            previous_status=previous_status,
+            new_status="taken_over",
+            message="Session successfully taken over by business owner",
+            timestamp=datetime.utcnow().isoformat()
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error taking over session {session_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to take over session")
+
+@router.post("/session/{session_id}/release", response_model=SessionControlResponseSchema)
+async def release_session(
+    session_id: int,
+    db: Session = Depends(get_db)
+):
+    """Release session back to agent control"""
+
+    try:
+        # Get the session
+        session = db.query(AgentSession).filter(AgentSession.id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        # Store previous status
+        previous_status = session.session_status
+
+        # Only allow release if currently taken over
+        if previous_status != "taken_over":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot release session with status '{previous_status}'. Only 'taken_over' sessions can be released."
+            )
+
+        # Update session status back to active
+        session.session_status = "active"
+        session.business_owner_active = False
+        session.business_owner_release_at = datetime.utcnow()
+
+        # Add release note to session
+        if hasattr(session, 'notes') and session.notes:
+            session.notes.append({
+                "timestamp": datetime.utcnow().isoformat(),
+                "type": "release",
+                "message": "Business owner released control back to agent",
+            })
+        else:
+            session.notes = [{
+                "timestamp": datetime.utcnow().isoformat(),
+                "type": "release",
+                "message": "Business owner released control back to agent",
+            }]
+
+        db.commit()
+        db.refresh(session)
+
+        logger.info(f"Session {session_id} released back to agent control")
+
+        return SessionControlResponseSchema(
+            success=True,
+            session_id=session_id,
+            previous_status=previous_status,
+            new_status="active",
+            message="Session successfully released back to agent",
+            timestamp=datetime.utcnow().isoformat()
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error releasing session {session_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to release session")
+
+@router.get("/session/{session_id}/status")
+async def get_session_status(session_id: int, db: Session = Depends(get_db)):
+    """Get current session status and control information"""
+
+    try:
+        session = db.query(AgentSession).filter(AgentSession.id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        return {
+            "session_id": session_id,
+            "session_status": session.session_status,
+            "business_owner_active": getattr(session, 'business_owner_active', False),
+            "last_message_at": session.last_message_at.isoformat() if session.last_message_at else None,
+            "last_message_from": session.last_message_from,
+            "message_count": session.message_count,
+            "created_at": session.created_at.isoformat() if session.created_at else None,
+            "takeover_reason": getattr(session, 'takeover_reason', None),
+            "business_owner_takeover_at": getattr(session, 'business_owner_takeover_at', None),
+            "business_owner_release_at": getattr(session, 'business_owner_release_at', None)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting session status {session_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get session status")
+
+@router.get("/conversation/{lead_external_id}")
+async def get_conversation_messages(
+    lead_external_id: str,
+    limit: int = 50,
+    since_timestamp: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Get complete conversation history (both agent and lead messages) for a lead
+
+    Args:
+        lead_external_id: External ID of the lead (e.g., Yelp lead ID)
+        limit: Maximum number of messages to return (default: 50)
+        since_timestamp: ISO timestamp to get messages after this time
+    """
+    try:
+        # Find lead by external_id
+        lead = db.query(Lead).filter(Lead.external_id == lead_external_id).first()
+        if not lead:
+            raise HTTPException(status_code=404, detail=f"Lead not found: {lead_external_id}")
+
+        from models.message import Message
+        from datetime import datetime
+
+        # Build query for all messages (agent and lead)
+        query = db.query(Message).filter(
+            Message.lead_id == lead.id
+        )
+
+        # Filter by timestamp if provided
+        if since_timestamp:
+            try:
+                since_dt = datetime.fromisoformat(since_timestamp.replace('Z', '+00:00'))
+                query = query.filter(Message.created_at > since_dt)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid timestamp format")
+
+        # Get messages ordered by creation time
+        messages = query.order_by(Message.created_at.asc()).limit(limit).all()
+
+        # Format response
+        formatted_messages = []
+        for message in messages:
+            formatted_messages.append({
+                "id": message.id,
+                "content": message.content,
+                "sender_type": message.sender_type,
+                "sender_name": message.sender_name,
+                "created_at": message.created_at.isoformat() if message.created_at else None,
+                "message_type": message.message_type,
+                "external_conversation_id": message.external_conversation_id,
+                "delivery_status": message.delivery_status,
+                "message_status": message.message_status,
+                "error_message": message.error_message,
+                "message_metadata": message.message_metadata or {},
+                "model_used": message.model_used,
+                "response_time_ms": message.response_time_ms,
+                "quality_score": message.quality_score,
+                "external_platform": message.external_platform
+            })
+
+        return {
+            "success": True,
+            "lead_external_id": lead_external_id,
+            "lead_id": lead.id,
+            "messages": formatted_messages,
+            "total_messages": len(formatted_messages),
+            "retrieved_at": datetime.utcnow().isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting conversation for lead {lead_external_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get conversation: {str(e)}")

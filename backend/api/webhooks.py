@@ -150,44 +150,9 @@ async def handle_yelp_lead_created(
             )
             logger.info(f"Triggered workflow for lead {lead.id}, created sessions: {session_ids}")
 
-            # Generate initial agent messages for each created session
-            if session_ids:
-                from services.agent_service import AgentService
-                agent_service = AgentService(db)
-
-                for session_id in session_ids:
-                    try:
-                        logger.info(f"Generating initial message for session {session_id}")
-
-                        # Build lead data for initial message
-                        lead_data = {
-                            "id": lead.id,
-                            "name": lead.name,
-                            "first_name": lead.first_name,
-                            "last_name": lead.last_name,
-                            "email": lead.email,
-                            "phone": lead.phone,
-                            "company": lead.company,
-                            "service_requested": lead.service_requested,
-                            "source": lead.source
-                        }
-
-                        # Generate initial message immediately
-                        initial_message = await agent_service.generate_initial_message(
-                            agent_session_id=session_id,
-                            lead_data=lead_data,
-                            project_details=project_details
-                        )
-
-                        if initial_message:
-                            logger.info(f"Generated initial message {initial_message.id} for session {session_id}")
-                        else:
-                            logger.error(f"Failed to generate initial message for session {session_id}")
-
-                    except Exception as e:
-                        logger.error(f"Error generating initial message for session {session_id}: {str(e)}")
-                        # Don't fail the entire webhook if one message fails
-                        continue
+            # Initial messages are now generated automatically by the workflow service
+            # No need for duplicate message generation here
+            logger.info(f"Workflow service will handle initial message generation for sessions: {session_ids}")
 
         except Exception as e:
             logger.error(f"Failed to trigger workflow for lead {lead.id}: {str(e)}")
@@ -254,7 +219,15 @@ async def handle_yelp_message_received(
             session_id = routing_result["session_id"]
             agent_id = routing_result["agent_id"]
 
-            logger.info(f"Generating agent response for session {session_id}")
+            # Check if session is taken over by business owner
+            from models.agent_session import AgentSession
+            session = db.query(AgentSession).filter(AgentSession.id == session_id).first()
+
+            if session and session.session_status == "taken_over":
+                logger.info(f"Session {session_id} is taken over by business owner - skipping agent response")
+                agent_response_content = "Agent response skipped - session taken over by business owner"
+            else:
+                logger.info(f"Generating agent response for session {session_id}")
 
             # Create the incoming message record
             incoming_message = Message.create_lead_message(
@@ -276,18 +249,19 @@ async def handle_yelp_message_received(
             db.commit()
             db.refresh(incoming_message)
 
-            # Generate agent response
-            agent_service = AgentService(db)
-            response_message = await agent_service.generate_response_message(
-                agent_session_id=session_id,
-                incoming_message=webhook_data.message_content
-            )
+            # Generate agent response only if not taken over
+            if session and session.session_status != "taken_over":
+                agent_service = AgentService(db)
+                response_message = await agent_service.generate_response_message(
+                    agent_session_id=session_id,
+                    incoming_message=webhook_data.message_content
+                )
 
-            if response_message:
-                agent_response_content = response_message.content
-                logger.info(f"Generated response for session {session_id}: {response_message.id}")
-            else:
-                logger.error(f"Failed to generate agent response for session {session_id}")
+                if response_message:
+                    agent_response_content = response_message.content
+                    logger.info(f"Generated response for session {session_id}: {response_message.id}")
+                else:
+                    logger.error(f"Failed to generate agent response for session {session_id}")
 
         # Prepare response with agent message for Zapier
         response_data = WebhookResponse(

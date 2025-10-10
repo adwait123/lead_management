@@ -5,6 +5,7 @@ import {
   Bot,
   Workflow,
   Blocks,
+  MessageCircle,
   Calendar as CalendarIcon,
   Settings
 } from 'lucide-react'
@@ -15,6 +16,7 @@ export function Layout({ children }) {
   const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
     { name: 'Leads', href: '/leads', icon: Users },
+    { name: 'Conversations', href: '/conversations', icon: MessageCircle },
     { name: 'AI Agents', href: '/agents', icon: Bot },
     { name: 'Calendar', href: '/calendar', icon: CalendarIcon },
     { name: 'Workflows', href: '/workflows', icon: Workflow },
@@ -25,7 +27,6 @@ export function Layout({ children }) {
     if (path === '/') return location.pathname === '/'
     return location.pathname.startsWith(path)
   }
-
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
@@ -70,7 +71,6 @@ export function Layout({ children }) {
           </Link>
         </div>
       </div>
-
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Top Bar (optional for user profile, notifications, etc.) */}

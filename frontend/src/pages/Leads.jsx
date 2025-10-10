@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
-import { Plus, Search, Filter, Eye, Phone, Mail, Building2, Calendar, Clock, User } from 'lucide-react'
+import { Plus, Search, Filter, Eye, Phone, Mail, Building2, Calendar, Clock, User, MessageCircle } from 'lucide-react'
 import { leadsAPI } from '../lib/api.js'
 
 export function Leads() {
+  const navigate = useNavigate()
   const [leads, setLeads] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -212,14 +214,27 @@ export function Leads() {
                           {formatDate(lead.created_at)}
                         </td>
                         <td className="py-3 px-4">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => viewLeadDetail(lead.id)}
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => viewLeadDetail(lead.id)}
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              View
+                            </Button>
+                            {lead.external_id && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => navigate(`/leads/${lead.id}/chat`)}
+                                className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                              >
+                                <MessageCircle className="h-4 w-4 mr-1" />
+                                Chat
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -370,6 +385,46 @@ export function Leads() {
                   </div>
                 </div>
               )}
+
+              {/* Actions */}
+              <div className="border-t border-gray-200 pt-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {selectedLead.external_id && (
+                    <Button
+                      className="w-full bg-blue-600 hover:bg-blue-700"
+                      onClick={() => {
+                        setShowLeadDetail(false)
+                        navigate(`/leads/${selectedLead.id}/chat`)
+                      }}
+                    >
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      Start Chat
+                    </Button>
+                  )}
+
+                  {selectedLead.phone && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => window.open(`tel:${selectedLead.phone}`)}
+                    >
+                      <Phone className="h-4 w-4 mr-2" />
+                      Call Lead
+                    </Button>
+                  )}
+
+                  {selectedLead.email && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => window.open(`mailto:${selectedLead.email}`)}
+                    >
+                      <Mail className="h-4 w-4 mr-2" />
+                      Email Lead
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>

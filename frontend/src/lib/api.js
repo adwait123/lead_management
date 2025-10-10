@@ -88,4 +88,25 @@ export const demoAPI = {
   reset: () => api.post('/api/demo/reset'),
 }
 
+// Chat API endpoints (re-export from chatAPI service)
+export const chatAPI = {
+  getRecentConversations: (params = {}) =>
+    api.get('/api/messages/conversations/recent', { params }),
+
+  getConversationHistory: (leadExternalId, params = {}) =>
+    api.get(`/api/webhooks/zapier/get-agent-responses/${leadExternalId}`, { params }),
+
+  sendLeadMessage: (messageData) =>
+    api.post('/api/webhooks/zapier/yelp-message-received', messageData),
+
+  sendBusinessMessage: (messageData) =>
+    api.post('/api/messages/route', messageData),
+
+  getLeadActiveSession: (leadId) =>
+    api.get(`/api/messages/lead/${leadId}/active-session`),
+
+  getSessionContext: (sessionId) =>
+    api.get(`/api/messages/session/${sessionId}/context`),
+}
+
 export default api
