@@ -23,7 +23,7 @@ class WebhookService:
         self.db = db
         # Default webhook URL - can be configured via environment variables
         self.webhook_urls = [
-            "https://webhook.site/#!/view/sample-webhook-url"  # Sample URL for testing
+            "https://www.postb.in/1760299453060-7508493557106"  # Active PostBin for webhook testing
         ]
 
     async def send_agent_message_webhook(
