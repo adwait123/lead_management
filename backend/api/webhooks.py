@@ -6,12 +6,13 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional, List
 import logging
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, HttpUrl
 # import requests  # Not used in this file
 
 from models.database import get_db
 from models.lead import Lead
 from services.workflow_service import WorkflowService
+from services.webhook_service import WebhookService
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -111,6 +112,14 @@ async def handle_yelp_lead_created(
         if "job_names" in webhook_data.project and webhook_data.project["job_names"]:
             service_requested = ", ".join(webhook_data.project["job_names"])
 
+        # Extract address from project data if available
+        address = ""
+        if "location" in webhook_data.project and webhook_data.project["location"]:
+            location = webhook_data.project["location"]
+            postal_code = location.get("postal_code", "")
+            # Could extract more address details from other fields if available
+            address = f"Location: {postal_code}" if postal_code else ""
+
         # Create Lead record
         lead = Lead(
             external_id=webhook_data.id,
@@ -120,6 +129,7 @@ async def handle_yelp_lead_created(
             email=email,
             phone=phone,
             company=None,  # Individual customers from Yelp
+            address=address,  # Add address field for consistency
             service_requested=service_requested,
             status="new",
             source="yelp",
@@ -479,5 +489,135 @@ async def get_yelp_sample_data():
             "message_content": "Hi, I'd like to get a quote for my move. When can you come out to assess?",
             "sender": "customer",
             "timestamp": "2024-08-01T10:30:00+00:00"
+        }
+    }
+
+
+# Webhook management endpoints for outbound notifications
+
+class WebhookUrlSchema(BaseModel):
+    url: HttpUrl
+
+
+class WebhookUrlListSchema(BaseModel):
+    urls: List[str]
+
+
+class WebhookTestSchema(BaseModel):
+    url: HttpUrl
+
+
+class WebhookTestResultSchema(BaseModel):
+    success: bool
+    message: str
+
+
+@router.get("/outbound/urls", response_model=WebhookUrlListSchema)
+async def get_webhook_urls(db: Session = Depends(get_db)):
+    """Get all configured outbound webhook URLs"""
+    webhook_service = WebhookService(db)
+    urls = webhook_service.get_webhook_urls()
+    return WebhookUrlListSchema(urls=urls)
+
+
+@router.post("/outbound/urls")
+async def add_webhook_url(webhook_data: WebhookUrlSchema, db: Session = Depends(get_db)):
+    """Add a new outbound webhook URL"""
+    webhook_service = WebhookService(db)
+    webhook_service.add_webhook_url(str(webhook_data.url))
+    return {"message": f"Webhook URL added: {webhook_data.url}"}
+
+
+@router.delete("/outbound/urls")
+async def remove_webhook_url(webhook_data: WebhookUrlSchema, db: Session = Depends(get_db)):
+    """Remove an outbound webhook URL"""
+    webhook_service = WebhookService(db)
+    webhook_service.remove_webhook_url(str(webhook_data.url))
+    return {"message": f"Webhook URL removed: {webhook_data.url}"}
+
+
+@router.post("/outbound/test", response_model=WebhookTestResultSchema)
+async def test_webhook(test_data: WebhookTestSchema, db: Session = Depends(get_db)):
+    """Test an outbound webhook URL with a sample payload"""
+    try:
+        webhook_service = WebhookService(db)
+        success = await webhook_service.test_webhook(str(test_data.url))
+
+        if success:
+            return WebhookTestResultSchema(
+                success=True,
+                message=f"Webhook test successful for {test_data.url}"
+            )
+        else:
+            return WebhookTestResultSchema(
+                success=False,
+                message=f"Webhook test failed for {test_data.url}"
+            )
+    except Exception as e:
+        logger.error(f"Error testing webhook {test_data.url}: {str(e)}")
+        return WebhookTestResultSchema(
+            success=False,
+            message=f"Error testing webhook: {str(e)}"
+        )
+
+
+@router.get("/outbound/sample-payload")
+async def get_sample_webhook_payload():
+    """Get sample outbound webhook payloads for reference"""
+    return {
+        "sample_agent_message_webhook": {
+            "event_type": "agent_message_sent",
+            "timestamp": "2024-01-15T10:30:00Z",
+            "message": {
+                "content": "Hi John! Thanks for reaching out about your kitchen renovation project.",
+                "type": "initial_message",
+                "session_id": 123
+            },
+            "lead": {
+                "id": 456,
+                "name": "John Doe",
+                "first_name": "John",
+                "last_name": "Doe",
+                "email": "john@example.com",
+                "phone": "+1234567890",
+                "company": "Acme Corp",
+                "address": "123 Main St, City, State 12345",
+                "external_id": "yelp_lead_789",
+                "service_requested": "Kitchen Renovation",
+                "status": "new",
+                "source": "Yelp"
+            },
+            "agent": {
+                "id": 1,
+                "name": "Sarah",
+                "type": "text",
+                "use_case": "general_sales"
+            },
+            "session": {
+                "id": 123,
+                "trigger_type": "new_lead",
+                "session_status": "active",
+                "session_goal": "qualify_lead",
+                "message_count": 1
+            }
+        },
+        "sample_lead_created_webhook": {
+            "event_type": "lead_created",
+            "timestamp": "2024-01-15T10:25:00Z",
+            "lead": {
+                "id": 456,
+                "name": "John Doe",
+                "first_name": "John",
+                "last_name": "Doe",
+                "email": "john@example.com",
+                "phone": "+1234567890",
+                "company": "Acme Corp",
+                "address": "123 Main St, City, State 12345",
+                "external_id": "yelp_lead_789",
+                "service_requested": "Kitchen Renovation",
+                "status": "new",
+                "source": "Yelp",
+                "created_at": "2024-01-15T10:25:00Z"
+            }
         }
     }

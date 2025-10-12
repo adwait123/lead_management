@@ -16,6 +16,7 @@ class Lead(Base):
     email = Column(String(255), nullable=False, index=True)
     phone = Column(String(50), nullable=True)
     company = Column(String(255), nullable=True, index=True)
+    address = Column(Text, nullable=True)  # Full address for service businesses
     external_id = Column(String(255), nullable=True, index=True)  # For Yelp lead ID, Zapier IDs, etc.
 
     # Lead details
@@ -50,6 +51,7 @@ class Lead(Base):
             "email": self.email,
             "phone": self.phone,
             "company": self.company,
+            "address": self.address,
             "external_id": self.external_id,
             "service_requested": self.service_requested,
             "status": self.status,

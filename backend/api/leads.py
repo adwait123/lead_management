@@ -99,7 +99,7 @@ async def get_lead(lead_id: int, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=LeadResponseSchema)
 async def create_lead(lead_data: LeadCreateSchema, db: Session = Depends(get_db)):
-    """Create a new lead"""
+    """Create a new lead and automatically trigger agent workflows"""
 
     # Check if email already exists
     existing_lead = db.query(Lead).filter(Lead.email == lead_data.email).first()
@@ -109,9 +109,13 @@ async def create_lead(lead_data: LeadCreateSchema, db: Session = Depends(get_db)
     # Create new lead
     lead = Lead(
         name=lead_data.name,
+        first_name=lead_data.first_name,
+        last_name=lead_data.last_name,
         email=lead_data.email,
         phone=lead_data.phone,
         company=lead_data.company,
+        address=lead_data.address,
+        external_id=lead_data.external_id,
         service_requested=lead_data.service_requested,
         status=lead_data.status,
         source=lead_data.source,
@@ -122,6 +126,49 @@ async def create_lead(lead_data: LeadCreateSchema, db: Session = Depends(get_db)
     db.add(lead)
     db.commit()
     db.refresh(lead)
+
+    # Trigger agent workflows for new lead
+    try:
+        from services.workflow_service import WorkflowService
+        workflow_service = WorkflowService(db)
+
+        # Create event data for workflow detection
+        form_data = {
+            "service_requested": lead_data.service_requested,
+            "company": lead_data.company,
+            "phone": lead_data.phone,
+            "address": lead_data.address
+        }
+
+        # Trigger workflow for new lead
+        session_ids = workflow_service.handle_lead_created(
+            lead_id=lead.id,
+            source=lead_data.source,
+            form_data=form_data
+        )
+
+        if session_ids:
+            logger.info(f"Created {len(session_ids)} agent sessions for lead {lead.id}: {session_ids}")
+        else:
+            logger.info(f"No agent workflows triggered for lead {lead.id}")
+
+    except Exception as e:
+        logger.error(f"Failed to trigger workflows for lead {lead.id}: {str(e)}")
+        # Don't fail the lead creation if workflow triggering fails
+
+    # Send webhook notification for lead creation
+    try:
+        import asyncio
+        from services.webhook_service import WebhookService
+        webhook_service = WebhookService(db)
+
+        # Send webhook asynchronously
+        asyncio.create_task(webhook_service.send_lead_created_webhook(lead.id))
+        logger.info(f"Scheduled webhook notification for lead {lead.id}")
+
+    except Exception as e:
+        logger.error(f"Failed to send webhook for lead {lead.id}: {str(e)}")
+        # Don't fail the lead creation if webhook sending fails
 
     try:
         return LeadResponseSchema.from_orm(lead)

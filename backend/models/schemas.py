@@ -28,10 +28,14 @@ class InteractionSchema(BaseModel):
 
 # Lead schemas
 class LeadBaseSchema(BaseModel):
-    name: str
+    name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     email: EmailStr
     phone: Optional[str] = None
     company: Optional[str] = None
+    address: Optional[str] = None
+    external_id: Optional[str] = None
     service_requested: Optional[str] = None
     status: str = "new"
     source: str
@@ -42,16 +46,19 @@ class LeadCreateSchema(LeadBaseSchema):
 
 class LeadUpdateSchema(BaseModel):
     name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     company: Optional[str] = None
+    address: Optional[str] = None
+    external_id: Optional[str] = None
     service_requested: Optional[str] = None
     status: Optional[str] = None
     source: Optional[str] = None
 
 class LeadResponseSchema(LeadBaseSchema):
     id: int
-    external_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     notes: List[Dict[str, Any]] = []

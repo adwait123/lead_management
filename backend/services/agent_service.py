@@ -95,6 +95,18 @@ class AgentService:
             session.update_message_stats(from_agent=True)
             self.db.commit()
 
+            # Send webhook notification for external systems
+            try:
+                from services.webhook_service import WebhookService
+                webhook_service = WebhookService(self.db)
+                await webhook_service.send_agent_message_webhook(
+                    session_id=agent_session_id,
+                    message_content=message_content['content'],
+                    message_type="initial_message"
+                )
+            except Exception as e:
+                logger.error(f"Failed to send webhook for initial message {message.id}: {str(e)}")
+
             logger.info(f"Initial message generated for session {agent_session_id}")
             return message
 
@@ -182,6 +194,18 @@ class AgentService:
             # Update session statistics
             session.update_message_stats(from_agent=True)
             self.db.commit()
+
+            # Send webhook notification for external systems
+            try:
+                from services.webhook_service import WebhookService
+                webhook_service = WebhookService(self.db)
+                await webhook_service.send_agent_message_webhook(
+                    session_id=agent_session_id,
+                    message_content=response_content['content'],
+                    message_type="response"
+                )
+            except Exception as e:
+                logger.error(f"Failed to send webhook for response message {message.id}: {str(e)}")
 
             logger.info(f"Response message generated for session {agent_session_id}")
             return message
@@ -271,6 +295,18 @@ class AgentService:
             # Update session statistics
             session.update_message_stats(from_agent=True)
             self.db.commit()
+
+            # Send webhook notification for external systems
+            try:
+                from services.webhook_service import WebhookService
+                webhook_service = WebhookService(self.db)
+                await webhook_service.send_agent_message_webhook(
+                    session_id=agent_session_id,
+                    message_content=message_content['content'],
+                    message_type="follow_up"
+                )
+            except Exception as e:
+                logger.error(f"Failed to send webhook for follow-up message {message.id}: {str(e)}")
 
             logger.info(f"Follow-up message generated for session {agent_session_id} (type: {template_type})")
             return message
