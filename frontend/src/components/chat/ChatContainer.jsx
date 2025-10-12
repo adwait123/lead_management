@@ -48,11 +48,15 @@ export function ChatContainer({
     sendMessage,
     simulateLeadMessage,
     refreshMessages,
-    conversationInfo
+    conversationInfo,
+    sessionInfo: hookSessionInfo
   } = useChat(leadExternalId, {
     pollInterval: 5000,
     autoScroll: true
   })
+
+  // Use session info from hook if available, fallback to prop
+  const currentSessionInfo = hookSessionInfo || sessionInfo
 
   /**
    * Handle sending a message
@@ -74,13 +78,13 @@ export function ChatContainer({
    * Handle taking over the conversation
    */
   const handleTakeOver = async () => {
-    if (!sessionInfo?.id) {
+    if (!currentSessionInfo?.id) {
       console.error('No session ID available for takeover')
       return
     }
 
     try {
-      const response = await chatAPI.takeoverSession(sessionInfo.id, {
+      const response = await chatAPI.takeoverSession(currentSessionInfo.id, {
         reason: 'Business owner manual takeover'
       })
 
@@ -101,13 +105,13 @@ export function ChatContainer({
    * Handle releasing control back to agent
    */
   const handleReleaseControl = async () => {
-    if (!sessionInfo?.id) {
+    if (!currentSessionInfo?.id) {
       console.error('No session ID available for release')
       return
     }
 
     try {
-      const response = await chatAPI.releaseSession(sessionInfo.id)
+      const response = await chatAPI.releaseSession(currentSessionInfo.id)
 
       if (response.data.success) {
         console.log('Session release successful:', response.data)
@@ -159,7 +163,7 @@ export function ChatContainer({
       {/* Chat Header */}
       <ChatHeader
         leadInfo={leadInfo}
-        sessionInfo={sessionInfo}
+        sessionInfo={currentSessionInfo}
         businessOwnerMode={businessOwnerMode}
         connectionStatus={connectionStatus}
         onTakeOver={handleTakeOver}
@@ -227,14 +231,14 @@ export function ChatContainer({
       )}
 
       {/* Agent Active Notice */}
-      {!businessOwnerMode && sessionInfo && (
+      {!businessOwnerMode && currentSessionInfo && (
         <div className="bg-green-50 border-b border-green-200 px-4 py-2">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
             <span className="text-sm text-green-700">
               {isTyping
-                ? `${sessionInfo.agent?.name || 'Agent'} is responding to the lead...`
-                : `${sessionInfo.agent?.name || 'Agent'} is actively managing this conversation`
+                ? `${currentSessionInfo.agent?.name || 'Agent'} is responding to the lead...`
+                : `${currentSessionInfo.agent?.name || 'Agent'} is actively managing this conversation`
               }
             </span>
           </div>
@@ -249,7 +253,7 @@ export function ChatContainer({
           error={error}
           onRefresh={refreshMessages}
           showTyping={isTyping}
-          typingSender={sessionInfo?.agent?.name || 'Agent'}
+          typingSender={currentSessionInfo?.agent?.name || 'Agent'}
           messagesEndRef={messagesEndRef}
           compact={compact}
         />

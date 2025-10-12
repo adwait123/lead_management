@@ -21,6 +21,7 @@ export function useChat(leadExternalId, options = {}) {
   const [error, setError] = useState(null)
   const [sending, setSending] = useState(false)
   const [conversationInfo, setConversationInfo] = useState(null)
+  const [sessionInfo, setSessionInfo] = useState(null)
   const [newMessage, setNewMessage] = useState('')
 
   // Refs
@@ -72,6 +73,9 @@ export function useChat(leadExternalId, options = {}) {
             leadId: response.data.lead_id,
             leadExternalId: response.data.lead_external_id
           })
+
+          // Fetch session information for takeover functionality
+          fetchSessionInfo(response.data.lead_id)
         }
       }
     } catch (err) {
@@ -81,6 +85,27 @@ export function useChat(leadExternalId, options = {}) {
       setLoading(false)
     }
   }, [leadExternalId, conversationInfo])
+
+  /**
+   * Fetch session information for takeover functionality
+   */
+  const fetchSessionInfo = useCallback(async (leadId) => {
+    try {
+      const response = await chatAPI.getLeadActiveSession(leadId)
+
+      if (response.data.has_active_session && response.data.session) {
+        setSessionInfo({
+          id: response.data.session.session_id,
+          agent: response.data.session.agent,
+          lead: response.data.session.lead,
+          session: response.data.session.session
+        })
+      }
+    } catch (err) {
+      console.error('Error fetching session info:', err)
+      // Don't set error state for session info as it's not critical for basic functionality
+    }
+  }, [])
 
   /**
    * Poll for new messages
@@ -233,6 +258,7 @@ export function useChat(leadExternalId, options = {}) {
     error,
     sending,
     conversationInfo,
+    sessionInfo,
     newMessage,
     setNewMessage,
 
@@ -245,6 +271,7 @@ export function useChat(leadExternalId, options = {}) {
     refreshMessages,
     startPolling,
     stopPolling,
+    fetchSessionInfo,
 
     // Utilities
     formatMessageTime: chatUtils.formatMessageTime,
