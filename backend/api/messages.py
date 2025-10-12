@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
 import logging
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -18,10 +18,21 @@ from services.message_router import MessageRouter
 
 # Pydantic schemas for message APIs
 class IncomingMessageSchema(BaseModel):
-    lead_id: int
+    lead_id: Optional[int] = None
+    lead_external_id: Optional[str] = None
     message: str
     message_type: Optional[str] = "text"
     metadata: Optional[Dict[str, Any]] = {}
+
+    @validator('lead_external_id', always=True)
+    def validate_lead_identification(cls, v, values):
+        """Ensure exactly one of lead_id or lead_external_id is provided"""
+        lead_id = values.get('lead_id')
+        if not lead_id and not v:
+            raise ValueError('Either lead_id or lead_external_id must be provided')
+        if lead_id and v:
+            raise ValueError('Cannot provide both lead_id and lead_external_id')
+        return v
 
 class MessageRoutingResponseSchema(BaseModel):
     success: bool
@@ -69,15 +80,20 @@ router = APIRouter(prefix="/api/messages", tags=["messages"])
 async def route_message(message_data: IncomingMessageSchema, db: Session = Depends(get_db)):
     """Route an incoming message to the appropriate agent session and generate agent response"""
 
-    # Validate lead exists
-    lead = db.query(Lead).filter(Lead.id == message_data.lead_id).first()
-    if not lead:
-        raise HTTPException(status_code=404, detail="Lead not found")
+    # Lookup lead by either internal ID or external ID
+    if message_data.lead_external_id:
+        lead = db.query(Lead).filter(Lead.external_id == message_data.lead_external_id).first()
+        if not lead:
+            raise HTTPException(status_code=404, detail=f"Lead not found with external_id: {message_data.lead_external_id}")
+    else:
+        lead = db.query(Lead).filter(Lead.id == message_data.lead_id).first()
+        if not lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
 
     try:
         router_service = MessageRouter(db)
         result = router_service.route_message(
-            lead_id=message_data.lead_id,
+            lead_id=lead.id,  # Use the lead ID from the found lead object
             message=message_data.message,
             message_type=message_data.message_type,
             metadata=message_data.metadata
@@ -169,7 +185,7 @@ async def get_session_context(session_id: int, db: Session = Depends(get_db)):
 
 @router.get("/lead/{lead_id}/active-session")
 async def get_lead_active_session(lead_id: int, db: Session = Depends(get_db)):
-    """Get the active session information for a lead"""
+    """Get the active session information for a lead by internal ID"""
 
     # Validate lead exists
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
@@ -193,6 +209,35 @@ async def get_lead_active_session(lead_id: int, db: Session = Depends(get_db)):
 
     except Exception as e:
         logger.error(f"Error getting lead active session: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get lead active session")
+
+@router.get("/external/{external_id}/active-session")
+async def get_lead_active_session_by_external_id(external_id: str, db: Session = Depends(get_db)):
+    """Get the active session information for a lead by external ID"""
+
+    # Validate lead exists
+    lead = db.query(Lead).filter(Lead.external_id == external_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail=f"Lead not found with external_id: {external_id}")
+
+    try:
+        router_service = MessageRouter(db)
+        active_session = router_service._get_active_session(lead.id)
+
+        if not active_session:
+            return {"has_active_session": False, "external_id": external_id, "lead_id": lead.id}
+
+        context = router_service.get_session_context(active_session.id)
+
+        return {
+            "has_active_session": True,
+            "external_id": external_id,
+            "lead_id": lead.id,
+            "session": context
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting lead active session by external_id: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get lead active session")
 
 @router.get("/conversations/recent")
