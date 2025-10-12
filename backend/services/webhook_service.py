@@ -187,10 +187,13 @@ class WebhookService:
 
             timeout = aiohttp.ClientTimeout(total=30)  # 30 second timeout
 
+            # Manually serialize payload to JSON string
+            json_payload = json.dumps(payload, ensure_ascii=False)
+
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(
                     webhook_url,
-                    json=payload,
+                    data=json_payload,
                     headers=headers
                 ) as response:
                     if response.status >= 200 and response.status < 300:
