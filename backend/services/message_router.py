@@ -89,6 +89,9 @@ class MessageRouter:
         try:
             self.db.commit()
 
+            # Handle follow-up sequence cancellation when lead responds
+            self._handle_lead_response_follow_up(session)
+
             # Get agent information
             agent = self.db.query(Agent).filter(Agent.id == session.agent_id).first()
             lead = self.db.query(Lead).filter(Lead.id == session.lead_id).first()
@@ -526,3 +529,17 @@ class MessageRouter:
                 "session_id": session_id,
                 "error": str(e)
             }
+
+    def _handle_lead_response_follow_up(self, session: AgentSession):
+        """Handle follow-up sequence cancellation when lead responds"""
+        try:
+            # Import follow-up scheduler here to avoid circular imports
+            from services.follow_up_scheduler import FollowUpScheduler
+
+            scheduler = FollowUpScheduler(self.db)
+            scheduler.handle_lead_response(session.id)
+
+            logger.debug(f"Processed lead response follow-up for session {session.id}")
+
+        except Exception as e:
+            logger.error(f"Error handling lead response follow-up for session {session.id}: {str(e)}")

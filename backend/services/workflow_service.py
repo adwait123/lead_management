@@ -66,6 +66,19 @@ class WorkflowService:
             if self._agent_has_matching_trigger(agent, event_type):
                 matching_agents.append(agent)
 
+        # Prioritize agents with workflow steps (follow-up sequences) over those without
+        # This ensures that agents with follow-up capabilities are selected first
+        matching_agents.sort(key=lambda agent: (
+            len(agent.workflow_steps or []) > 0,  # True for agents with workflow steps (sorts first)
+            -len(agent.workflow_steps or []),     # More workflow steps preferred
+            agent.id                              # Consistent ordering for same capabilities
+        ), reverse=True)
+
+        logger.info(f"Found {len(matching_agents)} matching agents for event {event_type}")
+        for agent in matching_agents:
+            workflow_count = len(agent.workflow_steps or [])
+            logger.info(f"  Agent {agent.id} ({agent.name}): {workflow_count} workflow steps")
+
         return matching_agents
 
     def _agent_has_matching_trigger(self, agent: Agent, event_type: str) -> bool:
@@ -135,6 +148,9 @@ class WorkflowService:
             self.db.add(session)
             self.db.commit()
             self.db.refresh(session)
+
+            # Set up follow-up sequences if agent has workflow steps
+            self._setup_follow_up_sequences(session, agent)
 
             # Generate initial message asynchronously
             self._trigger_initial_message_generation(session.id, lead, event_data)
@@ -374,3 +390,56 @@ class WorkflowService:
         except Exception as e:
             logger.error(f"Error in sync initial message generation for session {session_id}: {str(e)}")
             return False
+
+    def _setup_follow_up_sequences(self, session: AgentSession, agent: Agent):
+        """Set up follow-up sequences for the agent session based on agent workflow steps"""
+        try:
+            logger.info(f"Setting up follow-up sequences for session {session.id} with agent {agent.id}")
+
+            # Check if agent has workflow steps with follow-up sequences
+            if not agent.workflow_steps:
+                logger.info(f"No workflow steps found for agent {agent.id}")
+                return
+
+            logger.info(f"Agent {agent.id} has {len(agent.workflow_steps)} workflow steps")
+
+            # Import follow-up scheduler here to avoid circular imports
+            from services.follow_up_scheduler import FollowUpScheduler
+
+            # Filter workflow steps for follow-up sequences
+            follow_up_steps = []
+            for i, step in enumerate(agent.workflow_steps):
+                logger.debug(f"Processing workflow step {i+1}: {step}")
+                if isinstance(step, dict) and step.get("type") == "time_based_trigger":
+                    trigger = step.get("trigger", {})
+                    if trigger.get("event") == "no_response":
+                        follow_up_steps.append(step)
+                        logger.info(f"Found follow-up step: {step}")
+
+            if not follow_up_steps:
+                logger.warning(f"No follow-up sequences found in workflow steps for agent {agent.id}")
+                logger.debug(f"Workflow steps were: {agent.workflow_steps}")
+                return
+
+            logger.info(f"Found {len(follow_up_steps)} follow-up steps for agent {agent.id}")
+
+            # Sort by sequence position
+            follow_up_steps.sort(key=lambda x: x.get("sequence_position", 0))
+
+            # Create follow-up scheduler and schedule the sequence
+            logger.info(f"Creating FollowUpScheduler and scheduling sequence for session {session.id}")
+            scheduler = FollowUpScheduler(self.db)
+            created_task_ids = scheduler.schedule_follow_up_sequence(
+                agent_session_id=session.id,
+                trigger_event="no_response"
+            )
+
+            if created_task_ids:
+                logger.info(f"Successfully scheduled {len(created_task_ids)} follow-up tasks for session {session.id}")
+            else:
+                logger.error(f"Failed to schedule follow-up sequence for session {session.id}")
+
+        except Exception as e:
+            logger.error(f"Error setting up follow-up sequences for session {session.id}: {str(e)}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")

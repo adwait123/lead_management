@@ -58,7 +58,7 @@ class LeadResponseSchema(LeadBaseSchema):
     interaction_history: List[Dict[str, Any]] = []
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class LeadListResponseSchema(BaseModel):
     leads: List[LeadResponseSchema]
@@ -195,7 +195,7 @@ class AgentResponseSchema(AgentBaseSchema):
     created_by: str = "system"
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
     @validator('knowledge', pre=True)
     def parse_knowledge(cls, v):
@@ -338,7 +338,7 @@ class AgentSessionResponseSchema(BaseModel):
     initial_context: Dict[str, Any]
     session_metadata: Dict[str, Any]
     message_count: int
-    last_message_at: Optional[str]
+    last_message_at: Optional[datetime]
     last_message_from: Optional[str]
     session_goal: Optional[str]
     completion_reason: Optional[str]
@@ -348,12 +348,12 @@ class AgentSessionResponseSchema(BaseModel):
     escalation_reason: Optional[str]
     auto_timeout_hours: int
     max_message_count: int
-    created_at: str
-    updated_at: str
-    ended_at: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    ended_at: Optional[datetime]
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class AgentSessionListResponseSchema(BaseModel):
     sessions: List[AgentSessionResponseSchema]

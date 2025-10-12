@@ -191,6 +191,95 @@ class AgentService:
             logger.error(f"Error generating response message for session {agent_session_id}: {str(e)}")
             return None
 
+    async def generate_follow_up_message(
+        self,
+        agent_session_id: int,
+        template: str,
+        template_type: str,
+        context: Dict[str, Any] = None
+    ) -> Optional[Message]:
+        """
+        Generate a follow-up message based on sequence configuration
+
+        Args:
+            agent_session_id: ID of the agent session
+            template: Message template or content
+            template_type: Type of follow-up (no_response_sequence, appointment_reminder, etc.)
+            context: Additional context for message generation
+
+        Returns:
+            Message object if successful, None if failed
+        """
+        try:
+            # Get session, agent, and lead information
+            session = self.db.query(AgentSession).filter(AgentSession.id == agent_session_id).first()
+            if not session:
+                logger.error(f"Agent session {agent_session_id} not found")
+                return None
+
+            agent = self.db.query(Agent).filter(Agent.id == session.agent_id).first()
+            if not agent:
+                logger.error(f"Agent {session.agent_id} not found")
+                return None
+
+            lead = self.db.query(Lead).filter(Lead.id == session.lead_id).first()
+            if not lead:
+                logger.error(f"Lead {session.lead_id} not found")
+                return None
+
+            # Get conversation history for context
+            conversation_history = self._get_conversation_history(agent_session_id, 5)
+
+            # Build context for follow-up message generation
+            follow_up_context = self._build_follow_up_context(
+                session, agent, lead, template, template_type, conversation_history, context
+            )
+
+            # Generate the follow-up message content
+            message_content = await self._generate_follow_up_content(agent, follow_up_context)
+
+            if not message_content:
+                logger.error(f"Failed to generate follow-up content for session {agent_session_id}")
+                return None
+
+            # Create the message record
+            message = Message.create_agent_message(
+                agent_session_id=agent_session_id,
+                lead_id=session.lead_id,
+                agent_id=agent.id,
+                content=message_content['content'],
+                metadata={
+                    "is_follow_up": True,
+                    "template_type": template_type,
+                    "follow_up_context": context,
+                    "message_type": "follow_up",
+                    "sequence_info": context.get('sequence_progress', {}) if context else {}
+                },
+                prompt_used=message_content.get('prompt_used'),
+                model_used=message_content.get('model_used'),
+                response_time_ms=message_content.get('response_time_ms'),
+                token_usage=message_content.get('token_usage'),
+                sender_name=agent.name,
+                external_platform=lead.source if lead.source else None
+            )
+
+            # Save to database
+            self.db.add(message)
+            self.db.commit()
+            self.db.refresh(message)
+
+            # Update session statistics
+            session.update_message_stats(from_agent=True)
+            self.db.commit()
+
+            logger.info(f"Follow-up message generated for session {agent_session_id} (type: {template_type})")
+            return message
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error generating follow-up message for session {agent_session_id}: {str(e)}")
+            return None
+
     def _build_initial_message_context(
         self,
         session: AgentSession,
@@ -592,3 +681,219 @@ IMPORTANT: Review the conversation history provided in the messages above to und
                 formatted_answers.append(f"Q: {question}\nA: {response_text}")
 
         return '\n\n'.join(formatted_answers) if formatted_answers else "None provided"
+
+    def _build_follow_up_context(
+        self,
+        session: AgentSession,
+        agent: Agent,
+        lead: Lead,
+        template: str,
+        template_type: str,
+        conversation_history: List[Message],
+        additional_context: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
+        """Build context for follow-up message generation"""
+
+        # Convert conversation history to chat format
+        chat_history = []
+        for msg in conversation_history:
+            role = "assistant" if msg.is_from_agent() else "user"
+            chat_history.append({
+                "role": role,
+                "content": msg.content,
+                "timestamp": msg.created_at.isoformat() if msg.created_at else None
+            })
+
+        # Get sequence progress if available
+        sequence_progress = additional_context.get('sequence_progress', {}) if additional_context else {}
+
+        context = {
+            "lead": {
+                "first_name": getattr(lead, 'first_name', None) or (lead.name.split()[0] if lead.name else "there"),
+                "last_name": getattr(lead, 'last_name', None) or "",
+                "full_name": lead.name or "Customer",
+                "service_requested": lead.service_requested,
+                "source": lead.source
+            },
+            "session": {
+                "goal": session.session_goal,
+                "message_count": session.message_count,
+                "trigger_type": session.trigger_type,
+                "time_since_last_message": session.get_time_since_last_message()
+            },
+            "agent": {
+                "name": agent.name,
+                "use_case": agent.use_case
+            },
+            "follow_up": {
+                "template": template,
+                "template_type": template_type,
+                "sequence_progress": sequence_progress,
+                "is_sequence": sequence_progress.get('current_step', 0) > 0,
+                "is_first_in_sequence": sequence_progress.get('is_first', False),
+                "is_last_in_sequence": sequence_progress.get('is_last', False)
+            },
+            "conversation": {
+                "history": chat_history,
+                "message_count": len(conversation_history),
+                "last_message_was_from_agent": chat_history[-1]["role"] == "assistant" if chat_history else False
+            },
+            "is_follow_up_message": True,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        # Apply additional context
+        if additional_context:
+            context.update(additional_context)
+
+        return context
+
+    async def _generate_follow_up_content(self, agent: Agent, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Generate follow-up message content using sequence-aware templates"""
+
+        follow_up_info = context["follow_up"]
+        template_type = follow_up_info["template_type"]
+
+        if not self.openai_service.is_available():
+            # Fallback follow-up messages based on type
+            fallback_messages = {
+                "no_response_sequence": self._get_no_response_fallback(context),
+                "appointment_reminder": f"Hi {context['lead']['first_name']}! This is a reminder about your upcoming appointment.",
+                "reengagement": f"Hi {context['lead']['first_name']}! I wanted to follow up about {context['lead']['service_requested']}."
+            }
+
+            fallback_content = fallback_messages.get(template_type, "Following up on our previous conversation.")
+
+            return {
+                "content": fallback_content,
+                "model_used": "fallback",
+                "response_time_ms": 0,
+                "token_usage": {},
+                "prompt_used": f"fallback_{template_type}"
+            }
+
+        try:
+            start_time = datetime.now()
+
+            # Build system prompt for follow-up message
+            system_prompt = self._build_follow_up_prompt(agent, context)
+
+            # Create user message for follow-up generation
+            user_message = self._format_follow_up_request(context)
+
+            # Generate response
+            response = await self.openai_service.chat_completion(
+                messages=[{"role": "user", "content": user_message}],
+                model=agent.model or "gpt-3.5-turbo",
+                temperature=float(agent.temperature) if agent.temperature else 0.7,
+                max_tokens=agent.max_tokens or 300,  # Shorter for follow-ups
+                system_prompt=system_prompt
+            )
+
+            end_time = datetime.now()
+            response_time_ms = int((end_time - start_time).total_seconds() * 1000)
+
+            if response["success"]:
+                return {
+                    "content": response["response"],
+                    "model_used": response["model"],
+                    "response_time_ms": response_time_ms,
+                    "token_usage": response["usage"],
+                    "prompt_used": system_prompt[:200] + "..." if len(system_prompt) > 200 else system_prompt
+                }
+            else:
+                logger.error(f"OpenAI response failed for follow-up: {response['error']}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error generating follow-up content: {str(e)}")
+            return None
+
+    def _build_follow_up_prompt(self, agent: Agent, context: Dict[str, Any]) -> str:
+        """Build system prompt for follow-up message generation"""
+
+        base_prompt = agent.prompt_template or "You are a helpful customer service agent."
+        prompt_with_context = self._replace_prompt_variables(base_prompt, context)
+
+        follow_up_info = context["follow_up"]
+        sequence_progress = follow_up_info["sequence_progress"]
+
+        # Add follow-up specific instructions
+        follow_up_instruction = f"""
+
+FOLLOW-UP MESSAGE CONTEXT:
+You are generating a follow-up message for {context['lead']['first_name']} who has not responded recently.
+
+Follow-up Details:
+- Type: {follow_up_info['template_type']}
+- Time since last message: {context['session']['time_since_last_message']} minutes
+- Previous conversation messages: {context['conversation']['message_count']}
+
+"""
+
+        # Add sequence-specific context
+        if follow_up_info["is_sequence"] and sequence_progress:
+            sequence_instruction = f"""
+SEQUENCE CONTEXT:
+This is step {sequence_progress.get('current_step', 1)} of {sequence_progress.get('total_steps', 1)} in a follow-up sequence.
+- Is first message in sequence: {follow_up_info['is_first_in_sequence']}
+- Is last message in sequence: {follow_up_info['is_last_in_sequence']}
+- Progress: {sequence_progress.get('progress_percentage', 0):.0f}% complete
+
+"""
+            follow_up_instruction += sequence_instruction
+
+            if follow_up_info['is_first_in_sequence']:
+                follow_up_instruction += "This is your first follow-up attempt. Be friendly and check if they need any information.\n"
+            elif follow_up_info['is_last_in_sequence']:
+                follow_up_instruction += "This is your final follow-up attempt. Offer alternative ways to connect or politely close the conversation.\n"
+            else:
+                follow_up_instruction += "This is a middle step in your follow-up sequence. Be persistent but respectful.\n"
+
+        # Add template-specific instructions
+        template_instructions = {
+            "no_response_sequence": "Generate a polite follow-up message asking if they need any additional information or have questions.",
+            "appointment_reminder": "Generate a friendly reminder about an upcoming appointment.",
+            "reengagement": "Generate a re-engagement message to reconnect with an inactive lead."
+        }
+
+        template_instruction = template_instructions.get(follow_up_info['template_type'], "Generate an appropriate follow-up message.")
+        follow_up_instruction += f"\nMessage Type Instruction: {template_instruction}\n"
+
+        # Add template content if provided
+        if follow_up_info['template'] and follow_up_info['template'] != 'default':
+            follow_up_instruction += f"\nTemplate Content: Use this as inspiration but personalize it: '{follow_up_info['template']}'\n"
+
+        return prompt_with_context + follow_up_instruction
+
+    def _format_follow_up_request(self, context: Dict[str, Any]) -> str:
+        """Format the user message for follow-up generation"""
+
+        follow_up_info = context["follow_up"]
+
+        message = f"Generate a follow-up message for {context['lead']['first_name']} based on the context above."
+
+        # Add conversation context if available
+        if context['conversation']['history']:
+            message += f" They last engaged {context['session']['time_since_last_message']} minutes ago."
+
+        # Add sequence context
+        if follow_up_info['is_sequence']:
+            step = follow_up_info['sequence_progress'].get('current_step', 1)
+            total = follow_up_info['sequence_progress'].get('total_steps', 1)
+            message += f" This is follow-up step {step} of {total}."
+
+        return message
+
+    def _get_no_response_fallback(self, context: Dict[str, Any]) -> str:
+        """Get fallback message for no response follow-up"""
+
+        first_name = context['lead']['first_name']
+        sequence_progress = context['follow_up']['sequence_progress']
+
+        if sequence_progress.get('is_first', True):
+            return f"Hi {first_name}! I wanted to follow up on our conversation. Do you have any questions I can help answer?"
+        elif sequence_progress.get('is_last', False):
+            return f"Hi {first_name}! This is my final follow-up. If you'd like to continue our conversation, please feel free to reach out anytime!"
+        else:
+            return f"Hi {first_name}! Just checking in to see if you need any additional information from me."

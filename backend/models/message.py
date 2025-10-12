@@ -187,13 +187,15 @@ class Message(Base):
     def create_agent_message(cls, agent_session_id: int, lead_id: int, agent_id: int,
                            content: str, metadata: dict = None, **kwargs):
         """Factory method to create agent messages"""
+        # Extract message_type from kwargs to avoid duplicate parameter
+        message_type = kwargs.pop('message_type', 'text')
         return cls(
             agent_session_id=agent_session_id,
             lead_id=lead_id,
             agent_id=agent_id,
             content=content,
             sender_type="agent",
-            message_type=kwargs.get('message_type', 'text'),
+            message_type=message_type,
             message_metadata=metadata or {},
             **kwargs
         )
@@ -202,6 +204,8 @@ class Message(Base):
     def create_lead_message(cls, agent_session_id: int, lead_id: int, content: str,
                           external_conversation_id: str = None, metadata: dict = None, **kwargs):
         """Factory method to create lead messages"""
+        # Extract message_type from kwargs to avoid duplicate parameter
+        message_type = kwargs.pop('message_type', 'text')
         return cls(
             agent_session_id=agent_session_id,
             lead_id=lead_id,
@@ -209,7 +213,7 @@ class Message(Base):
             content=content,
             sender_type="lead",
             external_conversation_id=external_conversation_id,
-            message_type=kwargs.get('message_type', 'text'),
+            message_type=message_type,
             message_metadata=metadata or {},
             **kwargs
         )
@@ -218,6 +222,8 @@ class Message(Base):
     def create_business_owner_message(cls, agent_session_id: int, lead_id: int, content: str,
                                     business_owner_name: str = None, metadata: dict = None, **kwargs):
         """Factory method to create business owner messages"""
+        # Extract message_type from kwargs to avoid duplicate parameter
+        message_type = kwargs.pop('message_type', 'text')
         return cls(
             agent_session_id=agent_session_id,
             lead_id=lead_id,
@@ -225,7 +231,7 @@ class Message(Base):
             content=content,
             sender_type="business_owner",
             sender_name=business_owner_name or "Business Owner",
-            message_type=kwargs.get('message_type', 'text'),
+            message_type=message_type,
             message_metadata=metadata or {},
             **kwargs
         )
@@ -234,13 +240,15 @@ class Message(Base):
     def create_system_message(cls, agent_session_id: int, lead_id: int, content: str,
                             metadata: dict = None, **kwargs):
         """Factory method to create system messages"""
+        # Extract message_type from kwargs to avoid duplicate parameter
+        message_type = kwargs.pop('message_type', 'system_notification')
         return cls(
             agent_session_id=agent_session_id,
             lead_id=lead_id,
             agent_id=None,
             content=content,
             sender_type="system",
-            message_type=kwargs.get('message_type', 'system_notification'),
+            message_type=message_type,
             message_metadata=metadata or {},
             **kwargs
         )
