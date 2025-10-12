@@ -67,42 +67,33 @@ class WebhookService:
             logger.info(f"Webhook data - Session ID: {session_id}, Lead: {lead.name}, Agent: {agent.name}, Message: {message_content[:100]}")
             logger.info(f"Lead details - ID: {lead.id}, External ID: {lead.external_id}, Email: {lead.email}")
 
-            # Build webhook payload with explicit JSON serialization
+            # Build webhook payload with flat structure for testing
             payload = {
                 "event_type": "agent_message_sent",
                 "timestamp": datetime.utcnow().isoformat(),
-                "message": {
-                    "content": str(message_content) if message_content else "",
-                    "type": str(message_type) if message_type else "",
-                    "session_id": int(session_id) if session_id else 0
-                },
-                "lead": {
-                    "id": int(lead.id) if lead.id else 0,
-                    "name": str(lead.name) if lead.name else "",
-                    "first_name": str(lead.first_name) if lead.first_name else "",
-                    "last_name": str(lead.last_name) if lead.last_name else "",
-                    "email": str(lead.email) if lead.email else "",
-                    "phone": str(lead.phone) if lead.phone else "",
-                    "company": str(lead.company) if lead.company else "",
-                    "address": str(lead.address) if lead.address else "",
-                    "external_id": str(lead.external_id) if lead.external_id else "",
-                    "service_requested": str(lead.service_requested) if lead.service_requested else "",
-                    "status": str(lead.status) if lead.status else "",
-                    "source": str(lead.source) if lead.source else ""
-                },
-                "agent": {
-                    "id": int(agent.id) if agent.id else 0,
-                    "name": str(agent.name) if agent.name else "",
-                    "type": str(agent.type) if agent.type else "",
-                    "use_case": str(agent.use_case) if agent.use_case else ""
-                },
-                "session": {
-                    "id": int(session.id) if session.id else 0,
-                    "trigger_type": str(session.trigger_type) if session.trigger_type else "",
-                    "session_status": str(session.session_status) if session.session_status else "",
-                    "session_goal": str(session.session_goal) if session.session_goal else "",
-                    "message_count": int(session.message_count) if session.message_count else 0
-                }
+                "message_content": str(message_content) if message_content else "",
+                "message_type": str(message_type) if message_type else "",
+                "session_id": int(session_id) if session_id else 0,
+                "lead_id": int(lead.id) if lead.id else 0,
+                "lead_name": str(lead.name) if lead.name else "",
+                "lead_first_name": str(lead.first_name) if lead.first_name else "",
+                "lead_last_name": str(lead.last_name) if lead.last_name else "",
+                "lead_email": str(lead.email) if lead.email else "",
+                "lead_phone": str(lead.phone) if lead.phone else "",
+                "lead_company": str(lead.company) if lead.company else "",
+                "lead_address": str(lead.address) if lead.address else "",
+                "lead_external_id": str(lead.external_id) if lead.external_id else "",
+                "lead_service_requested": str(lead.service_requested) if lead.service_requested else "",
+                "lead_status": str(lead.status) if lead.status else "",
+                "lead_source": str(lead.source) if lead.source else "",
+                "agent_id": int(agent.id) if agent.id else 0,
+                "agent_name": str(agent.name) if agent.name else "",
+                "agent_type": str(agent.type) if agent.type else "",
+                "agent_use_case": str(agent.use_case) if agent.use_case else "",
+                "session_trigger_type": str(session.trigger_type) if session.trigger_type else "",
+                "session_status": str(session.session_status) if session.session_status else "",
+                "session_goal": str(session.session_goal) if session.session_goal else "",
+                "session_message_count": int(session.message_count) if session.message_count else 0
             }
 
             # Log the full payload for debugging
