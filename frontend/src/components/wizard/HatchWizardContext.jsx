@@ -89,6 +89,24 @@ export const HatchWizardProvider = ({ children }) => {
       finalAction: 'bailout'
     },
 
+    // Workflow Configuration
+    workflows: {
+      triggers: {},
+      followUps: {
+        noResponse: {
+          enabled: false,
+          delayHours: 48,
+          sequence: []
+        },
+        appointmentReminder: { enabled: false, hoursBefore: 24 },
+        reEngagement: { enabled: false, delayDays: 7 }
+      },
+      leadFiltering: {
+        mode: 'all', // 'all' or 'filtered'
+        sources: []
+      }
+    },
+
     // Tool Configurations
     tools: {
       appointment: {
@@ -183,7 +201,7 @@ export const HatchWizardProvider = ({ children }) => {
 
   // Transform Hatch wizard data to backend agent format
   const transformToAgentData = () => {
-    const { persona, businessProfile, instructions, selectedTemplate, agentType, industry, faq, tools } = wizardData;
+    const { persona, businessProfile, instructions, selectedTemplate, agentType, industry, faq, tools, workflows } = wizardData;
     console.log('=== TRANSFORMATION DEBUG ===');
     console.log('Extracted persona:', persona);
     console.log('Extracted businessProfile:', businessProfile);
@@ -193,6 +211,7 @@ export const HatchWizardProvider = ({ children }) => {
     console.log('Extracted industry:', industry);
     console.log('Extracted faq:', faq);
     console.log('Extracted tools from root:', tools);
+    console.log('Extracted workflows:', workflows);
 
     // Build agent name - use persona name or template title as fallback
     const agentName = persona?.agentName || selectedTemplate?.title || 'Unnamed Agent';
@@ -252,15 +271,38 @@ export const HatchWizardProvider = ({ children }) => {
       language: 'en'
     };
 
-    // Build workflow triggers based on agent type and use case
+    // Build workflow triggers from user configuration
     const triggers = [];
-    if (agentType === 'inbound') {
-      triggers.push({ event: 'new_lead', condition: 'any' });
-      triggers.push({ event: 'chat_initiated', condition: 'any' });
+
+    // Add immediate triggers based on user selection
+    if (workflows?.triggers) {
+      Object.entries(workflows.triggers).forEach(([triggerEvent, config]) => {
+        if (config.enabled) {
+          const trigger = {
+            event: triggerEvent,
+            condition: 'any'
+          };
+
+          // Add source filtering if enabled
+          if (workflows.leadFiltering?.mode === 'filtered' && workflows.leadFiltering?.sources?.length > 0) {
+            trigger.sources = workflows.leadFiltering.sources;
+          }
+
+          triggers.push(trigger);
+        }
+      });
     }
-    if (agentType === 'outbound') {
-      triggers.push({ event: 'follow_up_due', condition: 'any' });
-      triggers.push({ event: 'lead_status_change', condition: 'contacted' });
+
+    // Add default triggers if none selected (fallback to original behavior)
+    if (triggers.length === 0) {
+      if (agentType === 'inbound') {
+        triggers.push({ event: 'new_lead', condition: 'any' });
+        triggers.push({ event: 'chat_initiated', condition: 'any' });
+      }
+      if (agentType === 'outbound') {
+        triggers.push({ event: 'follow_up_due', condition: 'any' });
+        triggers.push({ event: 'lead_status_change', condition: 'contacted' });
+      }
     }
 
     // Build actions based on conversation rules
@@ -271,6 +313,104 @@ export const HatchWizardProvider = ({ children }) => {
         status: wizardData.rules.success.action,
         assignTo: wizardData.rules.success.assignTo
       });
+    }
+
+    // Build workflow steps for follow-up automation
+    const workflowSteps = [];
+    if (workflows?.followUps) {
+      // No response follow-up sequence
+      if (workflows.followUps.noResponse?.enabled) {
+        if (workflows.followUps.noResponse.sequence && workflows.followUps.noResponse.sequence.length > 0) {
+          // Use sequence configuration
+          workflows.followUps.noResponse.sequence.forEach((step, index) => {
+            // Convert time units to minutes for consistent backend processing
+            let delayInMinutes;
+            switch (step.unit) {
+              case 'minutes':
+                delayInMinutes = step.delay;
+                break;
+              case 'hours':
+                delayInMinutes = step.delay * 60;
+                break;
+              case 'days':
+                delayInMinutes = step.delay * 60 * 24;
+                break;
+              default:
+                delayInMinutes = step.delay * 60; // default to hours
+            }
+
+            workflowSteps.push({
+              id: `no_response_sequence_${index + 1}`,
+              type: 'time_based_trigger',
+              sequence_position: index + 1,
+              trigger: {
+                event: 'no_response',
+                delay_minutes: delayInMinutes,
+                original_delay: step.delay,
+                original_unit: step.unit
+              },
+              action: {
+                type: 'send_message',
+                template: step.message || `Follow-up message ${index + 1}`,
+                template_type: 'no_response_sequence'
+              }
+            });
+          });
+        } else {
+          // Use legacy single follow-up configuration
+          workflowSteps.push({
+            id: 'no_response_followup',
+            type: 'time_based_trigger',
+            trigger: {
+              event: 'no_response',
+              delay_minutes: (workflows.followUps.noResponse.delayHours || 48) * 60
+            },
+            action: {
+              type: 'send_message',
+              template: 'followup_no_response',
+              template_type: 'no_response_single'
+            }
+          });
+        }
+      }
+
+      // Appointment reminder
+      if (workflows.followUps.appointmentReminder?.enabled) {
+        workflowSteps.push({
+          id: 'appointment_reminder',
+          type: 'time_based_trigger',
+          trigger: {
+            event: 'appointment_scheduled',
+            delay_minutes: -workflows.followUps.appointmentReminder.hoursBefore * 60,
+            original_delay: workflows.followUps.appointmentReminder.hoursBefore,
+            original_unit: 'hours'
+          },
+          action: {
+            type: 'send_message',
+            template: 'appointment_reminder',
+            template_type: 'appointment_reminder'
+          }
+        });
+      }
+
+      // Re-engagement sequence
+      if (workflows.followUps.reEngagement?.enabled) {
+        workflowSteps.push({
+          id: 'reengagement_sequence',
+          type: 'time_based_trigger',
+          trigger: {
+            event: 'lead_inactive',
+            delay_minutes: workflows.followUps.reEngagement.delayDays * 60 * 24,
+            original_delay: workflows.followUps.reEngagement.delayDays,
+            original_unit: 'days'
+          },
+          action: {
+            type: 'send_message',
+            template: 'reengagement',
+            template_type: 'reengagement'
+          }
+        });
+      }
     }
 
     const finalAgentData = {
@@ -301,7 +441,7 @@ export const HatchWizardProvider = ({ children }) => {
       // Workflow
       triggers: triggers,
       actions: actions,
-      workflow_steps: [],
+      workflow_steps: workflowSteps,
       integrations: [],
 
       // Status
@@ -473,6 +613,24 @@ export const HatchWizardProvider = ({ children }) => {
         retryDelay: '1_day',
         messageTemplate: '',
         finalAction: 'bailout'
+      },
+
+      // Workflow Configuration
+      workflows: {
+        triggers: {},
+        followUps: {
+          noResponse: {
+            enabled: false,
+            delayHours: 48,
+            sequence: []
+          },
+          appointmentReminder: { enabled: false, hoursBefore: 24 },
+          reEngagement: { enabled: false, delayDays: 7 }
+        },
+        leadFiltering: {
+          mode: 'all',
+          sources: []
+        }
       },
 
       // Tool Configurations

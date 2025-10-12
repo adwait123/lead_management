@@ -1,0 +1,37 @@
+{
+  "id": "staging-takeover-test-001",
+  "business_id": "staging-business-123",
+  "conversation_id": "conv-staging-takeover",
+  "time_created": "2024-10-10T03:00:00+00:00",
+  "last_event_time": "2024-10-10T03:00:00+00:00",
+  "temporary_email_address": "staging-test@messaging.test.com",
+  "temporary_email_address_expiry": "2024-12-31T23:59:59+00:00",
+  "temporary_phone_number": "+15559876543",
+  "temporary_phone_number_expiry": "2024-12-31T23:59:59+00:00",
+  "user": {
+    "display_name": "Sarah Staging"
+  },
+  "project": {
+    "location": {
+      "postal_code": "10001"
+    },
+    "additional_info": "Testing the complete takeover functionality on staging environment with bathroom renovation",
+    "availability": {
+      "status": "SPECIFIC_DATES",
+      "dates": ["2024-12-20", "2024-12-21"]
+    },
+    "job_names": ["Bathroom Renovation"],
+    "survey_answers": [
+      {
+        "question_text": "What type of bathroom work do you need?",
+        "question_identifier": "bathroom_type",
+        "answer_text": ["Complete renovation with new fixtures and tiles"]
+      },
+      {
+        "question_text": "What is your budget range?",
+        "question_identifier": "budget",
+        "answer_text": ["$15,000 - $30,000"]
+      }
+    ]
+  }
+}
