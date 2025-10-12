@@ -23,6 +23,10 @@ export function AgentBasicsTab() {
     updateWizardData({ persona: updatedPersona });
   };
 
+  const handleActiveStatusChange = (isActive) => {
+    updateWizardData({ isActive });
+  };
+
   const toggleTrait = (traitId) => {
     const currentTraits = persona.traits || [];
     const updatedTraits = currentTraits.includes(traitId)
@@ -73,6 +77,45 @@ export function AgentBasicsTab() {
               {name}
             </Button>
           ))}
+        </div>
+      </div>
+
+      {/* Agent Active Status */}
+      <div className="bg-gradient-to-r from-orange-50 to-red-50 rounded-lg p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="block text-lg font-semibold text-gray-900 mb-2">
+              Agent Status
+            </label>
+            <p className="text-sm text-gray-600">
+              {wizardData.isActive !== false ?
+                'Agent is currently active and will respond to triggers' :
+                'Agent is deactivated and will not respond to triggers'
+              }
+            </p>
+          </div>
+          <div className="flex items-center">
+            <label className="flex items-center cursor-pointer">
+              <span className="mr-3 text-sm font-medium text-gray-700">
+                {wizardData.isActive !== false ? 'Active' : 'Inactive'}
+              </span>
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={wizardData.isActive !== false}
+                  onChange={(e) => handleActiveStatusChange(e.target.checked)}
+                  className="sr-only"
+                />
+                <div className={`w-14 h-8 rounded-full transition-all duration-200 ${
+                  wizardData.isActive !== false ? 'bg-green-500' : 'bg-gray-300'
+                }`}>
+                  <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-200 mt-1 ml-1 ${
+                    wizardData.isActive !== false ? 'translate-x-6' : 'translate-x-0'
+                  }`}></div>
+                </div>
+              </div>
+            </label>
+          </div>
         </div>
       </div>
 

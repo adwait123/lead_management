@@ -92,6 +92,62 @@ function HatchEditContent() {
           }
           return toolsObj;
         })(),
+        // Transform backend triggers and workflow_steps to frontend workflows format
+        workflows: (() => {
+          const workflows = {
+            triggers: {},
+            followUps: {
+              noResponse: { enabled: false, delayHours: 48, sequence: [] },
+              appointmentReminder: { enabled: false, hoursBefore: 24 },
+              reEngagement: { enabled: false, delayDays: 7 }
+            },
+            leadFiltering: {
+              mode: 'all',
+              sources: []
+            }
+          };
+
+          // Map triggers from backend format
+          if (agentData.triggers && Array.isArray(agentData.triggers)) {
+            agentData.triggers.forEach(trigger => {
+              let eventType;
+              if (typeof trigger === 'string') {
+                eventType = trigger;
+              } else if (trigger && typeof trigger === 'object') {
+                eventType = trigger.event || trigger.type || trigger.event_type;
+              }
+
+              if (eventType) {
+                workflows.triggers[eventType] = {
+                  enabled: trigger.active !== false, // Default to true unless explicitly false
+                  sources: ['all']
+                };
+              }
+            });
+          }
+
+          // Map workflow_steps to follow-up configurations
+          if (agentData.workflow_steps && Array.isArray(agentData.workflow_steps)) {
+            const noResponseSteps = agentData.workflow_steps.filter(step =>
+              step.type === 'time_based_trigger' &&
+              step.trigger?.event === 'no_response'
+            );
+
+            if (noResponseSteps.length > 0) {
+              workflows.followUps.noResponse.enabled = true;
+              workflows.followUps.noResponse.sequence = noResponseSteps.map((step, index) => ({
+                id: `step_${index + 1}`,
+                delay: step.trigger?.delay_minutes || (step.trigger?.delay_hours ? step.trigger.delay_hours * 60 : 60),
+                unit: step.trigger?.delay_minutes ? 'minutes' : 'hours',
+                message: step.action?.message_template || step.action?.message || `Follow-up message ${index + 1}`
+              }));
+            }
+          }
+
+          return workflows;
+        })(),
+        // Store agent active status for deactivation UI
+        isActive: agentData.is_active !== false,
         rules: {
           success: {
             action: 'move_to_scheduled',
@@ -225,7 +281,7 @@ function HatchEditContent() {
   };
 
   const transformToUpdateData = () => {
-    const { persona, instructions, businessProfile, faq, tools } = wizardData;
+    const { persona, instructions, businessProfile, faq, tools, workflows, isActive } = wizardData;
 
     console.log('=== UPDATE TRANSFORMATION DEBUG ===');
     console.log('wizardData for update:', JSON.stringify(wizardData, null, 2));
@@ -234,6 +290,8 @@ function HatchEditContent() {
     console.log('Extracted businessProfile:', businessProfile);
     console.log('Extracted faq:', faq);
     console.log('Extracted tools:', tools);
+    console.log('Extracted workflows:', workflows);
+    console.log('Extracted isActive:', isActive);
 
     // Map enabled tools - check both instructions.tools and wizardData.tools
     const toolsFromInstructions = instructions?.tools || [];
@@ -243,6 +301,42 @@ function HatchEditContent() {
       : Object.keys(toolsFromWizard).filter(key => toolsFromWizard[key]?.enabled);
 
     console.log('enabledTools computed as:', enabledTools);
+
+    // Transform frontend workflows back to backend format
+    const backendTriggers = [];
+    const backendWorkflowSteps = [];
+
+    if (workflows?.triggers) {
+      Object.entries(workflows.triggers).forEach(([eventType, config]) => {
+        if (config.enabled) {
+          backendTriggers.push({
+            event: eventType,
+            active: true
+          });
+        }
+      });
+    }
+
+    if (workflows?.followUps?.noResponse?.enabled && workflows.followUps.noResponse.sequence) {
+      workflows.followUps.noResponse.sequence.forEach((step, index) => {
+        const delayMinutes = step.unit === 'minutes' ? step.delay :
+                           step.unit === 'hours' ? step.delay * 60 :
+                           step.delay * 60 * 24; // days
+
+        backendWorkflowSteps.push({
+          type: 'time_based_trigger',
+          trigger: {
+            event: 'no_response',
+            delay_minutes: delayMinutes
+          },
+          action: {
+            type: 'send_message',
+            message_template: step.message
+          },
+          sequence_position: index + 1
+        });
+      });
+    }
 
     const updateData = {
       name: persona?.agentName || agent?.name,
@@ -261,6 +355,9 @@ function HatchEditContent() {
       temperature: agent?.temperature || '0.7',
       max_tokens: agent?.max_tokens || 500,
       enabled_tools: enabledTools,
+      is_active: isActive !== false, // Include agent active status
+      triggers: backendTriggers, // Include triggers
+      workflow_steps: backendWorkflowSteps, // Include workflow steps
       conversation_settings: {
         voice_enabled: persona?.communicationMode === 'voice' || persona?.communicationMode === 'both',
         text_enabled: persona?.communicationMode === 'text' || persona?.communicationMode === 'both',
