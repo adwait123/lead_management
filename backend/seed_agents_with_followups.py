@@ -597,7 +597,14 @@ def seed_agents():
             existing_agent = db.query(Agent).filter(Agent.name == agent_name).first()
             if existing_agent:
                 print(f"⚠️  Agent '{agent_name}' already exists (ID: {existing_agent.id})")
-                created_agents.append(existing_agent)
+                # Create summary data for existing agent
+                existing_summary = {
+                    'id': existing_agent.id,
+                    'name': existing_agent.name,
+                    'use_case': existing_agent.use_case,
+                    'workflow_steps': existing_agent.workflow_steps or []
+                }
+                created_agents.append(existing_summary)
                 continue
 
             # Create agent data
@@ -638,7 +645,14 @@ def seed_agents():
             db.commit()
             db.refresh(agent)
 
-            created_agents.append(agent)
+            # Create a copy of agent data for summary (before session closes)
+            agent_summary = {
+                'id': agent.id,
+                'name': agent.name,
+                'use_case': agent.use_case,
+                'workflow_steps': agent_data['workflow_steps']
+            }
+            created_agents.append(agent_summary)
             print(f"✅ Created agent '{agent_name}' (ID: {agent.id}) with {len(agent_data['workflow_steps'])} follow-up steps")
 
         except Exception as e:
@@ -657,21 +671,34 @@ def print_agent_summary(agents):
 
     for agent in agents:
         try:
-            workflow_count = len(agent.workflow_steps) if agent.workflow_steps else 0
-            print(f"\n📋 {agent.name} (ID: {agent.id})")
-            print(f"   Use Case: {agent.use_case}")
+            # Handle both dict and object formats
+            if isinstance(agent, dict):
+                agent_id = agent['id']
+                agent_name = agent['name']
+                agent_use_case = agent['use_case']
+                workflow_steps = agent['workflow_steps']
+            else:
+                agent_id = agent.id
+                agent_name = agent.name
+                agent_use_case = agent.use_case
+                workflow_steps = agent.workflow_steps
+
+            workflow_count = len(workflow_steps) if workflow_steps else 0
+            print(f"\n📋 {agent_name} (ID: {agent_id})")
+            print(f"   Use Case: {agent_use_case}")
             print(f"   Follow-up Steps: {workflow_count}")
 
             if workflow_count > 0:
                 print("   Follow-up Sequence:")
-                for i, step in enumerate(agent.workflow_steps, 1):
+                for i, step in enumerate(workflow_steps, 1):
                     delay = step.get('trigger', {}).get('original_delay', 0)
                     unit = step.get('trigger', {}).get('original_unit', 'minutes')
                     template = step.get('action', {}).get('template', 'N/A')
                     template_preview = template[:50] + "..." if len(template) > 50 else template
                     print(f"     {i}. After {delay} {unit} → {template_preview}")
         except Exception as e:
-            print(f"❌ Error displaying agent summary for {getattr(agent, 'name', 'Unknown')}: {str(e)}")
+            agent_name = agent.get('name', 'Unknown') if isinstance(agent, dict) else getattr(agent, 'name', 'Unknown')
+            print(f"❌ Error displaying agent summary for {agent_name}: {str(e)}")
 
 def main():
     """Main seeding function"""
