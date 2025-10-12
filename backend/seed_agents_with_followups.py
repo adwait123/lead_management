@@ -575,8 +575,10 @@ def seed_agents():
     """Create all seed agents"""
     print("🌱 Creating seed agents with follow-up sequences...")
 
-    # Get database session
-    db = next(get_db())
+    # Get database session using proper context
+    from sqlalchemy.orm import sessionmaker
+    Session = sessionmaker(bind=engine)
+    db = Session()
 
     # Agent creation functions
     agent_creators = [
@@ -609,7 +611,7 @@ def seed_agents():
                 use_case=agent_data["use_case"],
                 prompt_template=agent_data["prompt_template"],
                 prompt_template_name=agent_data["prompt_template_name"],
-                prompt_variables=agent_data["prompt_variables"],
+                prompt_variables=agent_data.get("prompt_variables", {}),
                 personality_traits=agent_data["personality_traits"],
                 personality_style=agent_data["personality_style"],
                 response_length=agent_data["response_length"],
@@ -654,17 +656,22 @@ def print_agent_summary(agents):
     print("="*70)
 
     for agent in agents:
-        workflow_count = len(agent.workflow_steps) if agent.workflow_steps else 0
-        print(f"\n📋 {agent.name} (ID: {agent.id})")
-        print(f"   Use Case: {agent.use_case}")
-        print(f"   Follow-up Steps: {workflow_count}")
+        try:
+            workflow_count = len(agent.workflow_steps) if agent.workflow_steps else 0
+            print(f"\n📋 {agent.name} (ID: {agent.id})")
+            print(f"   Use Case: {agent.use_case}")
+            print(f"   Follow-up Steps: {workflow_count}")
 
-        if workflow_count > 0:
-            print("   Follow-up Sequence:")
-            for i, step in enumerate(agent.workflow_steps, 1):
-                delay = step.get('trigger', {}).get('original_delay', 0)
-                unit = step.get('trigger', {}).get('original_unit', 'minutes')
-                print(f"     {i}. After {delay} {unit} → {step.get('action', {}).get('template', 'N/A')[:50]}...")
+            if workflow_count > 0:
+                print("   Follow-up Sequence:")
+                for i, step in enumerate(agent.workflow_steps, 1):
+                    delay = step.get('trigger', {}).get('original_delay', 0)
+                    unit = step.get('trigger', {}).get('original_unit', 'minutes')
+                    template = step.get('action', {}).get('template', 'N/A')
+                    template_preview = template[:50] + "..." if len(template) > 50 else template
+                    print(f"     {i}. After {delay} {unit} → {template_preview}")
+        except Exception as e:
+            print(f"❌ Error displaying agent summary for {getattr(agent, 'name', 'Unknown')}: {str(e)}")
 
 def main():
     """Main seeding function"""
