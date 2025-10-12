@@ -18,13 +18,126 @@ from models.schemas import (
     LeadResponseSchema,
     LeadListResponseSchema,
     LeadFiltersSchema,
-    NoteCreateSchema
+    NoteCreateSchema,
+    ProjectDataSchema
 )
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/leads", tags=["leads"])
+
+def create_notes_from_project_data(project_data: ProjectDataSchema) -> List[Dict[str, Any]]:
+    """Convert project data to structured notes"""
+    notes = []
+    note_id = 1
+
+    if project_data.survey_answers:
+        # Create survey Q&A note
+        qa_content = "Survey Questions & Answers:\n\n"
+        for qa in project_data.survey_answers:
+            qa_content += f"Q: {qa.question_text}\n"
+            qa_content += f"A: {', '.join(qa.answer_text)}\n\n"
+
+        notes.append({
+            "id": note_id,
+            "content": qa_content,
+            "timestamp": datetime.utcnow().isoformat(),
+            "author": "system",
+            "type": "survey_responses",
+            "survey_data": [qa.dict() for qa in project_data.survey_answers]
+        })
+        note_id += 1
+
+    if project_data.job_names:
+        notes.append({
+            "id": note_id,
+            "content": f"Requested Services: {', '.join(project_data.job_names)}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "author": "system",
+            "type": "services_requested"
+        })
+        note_id += 1
+
+    if project_data.additional_info:
+        notes.append({
+            "id": note_id,
+            "content": f"Additional Information: {project_data.additional_info}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "author": "system",
+            "type": "project_details"
+        })
+        note_id += 1
+
+    if project_data.location:
+        location_details = []
+        if project_data.location.postal_code:
+            location_details.append(f"Postal Code: {project_data.location.postal_code}")
+        if project_data.location.city:
+            location_details.append(f"City: {project_data.location.city}")
+        if project_data.location.state:
+            location_details.append(f"State: {project_data.location.state}")
+
+        if location_details:
+            notes.append({
+                "id": note_id,
+                "content": f"Project Location: {', '.join(location_details)}",
+                "timestamp": datetime.utcnow().isoformat(),
+                "author": "system",
+                "type": "location"
+            })
+            note_id += 1
+
+    if project_data.availability:
+        avail_content = f"Availability: {project_data.availability.status}"
+        if project_data.availability.dates:
+            avail_content += f"\nPreferred Dates: {', '.join(project_data.availability.dates)}"
+
+        notes.append({
+            "id": note_id,
+            "content": avail_content,
+            "timestamp": datetime.utcnow().isoformat(),
+            "author": "system",
+            "type": "availability"
+        })
+        note_id += 1
+
+    if project_data.attachments:
+        attachment_list = []
+        for att in project_data.attachments:
+            attachment_list.append(f"{att.resource_name} ({att.mime_type})")
+
+        notes.append({
+            "id": note_id,
+            "content": f"Attachments ({len(project_data.attachments)}): {', '.join(attachment_list)}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "author": "system",
+            "type": "attachments",
+            "attachments": [att.dict() for att in project_data.attachments]
+        })
+        note_id += 1
+
+    if project_data.budget_range:
+        notes.append({
+            "id": note_id,
+            "content": f"Budget Range: {project_data.budget_range}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "author": "system",
+            "type": "budget"
+        })
+        note_id += 1
+
+    if project_data.timeline:
+        notes.append({
+            "id": note_id,
+            "content": f"Timeline: {project_data.timeline}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "author": "system",
+            "type": "timeline"
+        })
+        note_id += 1
+
+    return notes
 
 @router.get("/", response_model=LeadListResponseSchema)
 async def get_leads(
@@ -106,6 +219,18 @@ async def create_lead(lead_data: LeadCreateSchema, db: Session = Depends(get_db)
     if existing_lead:
         raise HTTPException(status_code=400, detail="Lead with this email already exists")
 
+    # Process project data and create structured notes
+    combined_notes = lead_data.notes or []
+    if lead_data.project_data:
+        project_notes = create_notes_from_project_data(lead_data.project_data)
+        # Append project notes to existing notes
+        combined_notes.extend(project_notes)
+
+    # Enhance service_requested from project data if not provided
+    service_requested = lead_data.service_requested
+    if not service_requested and lead_data.project_data and lead_data.project_data.job_names:
+        service_requested = ", ".join(lead_data.project_data.job_names)
+
     # Create new lead
     lead = Lead(
         name=lead_data.name,
@@ -116,10 +241,10 @@ async def create_lead(lead_data: LeadCreateSchema, db: Session = Depends(get_db)
         company=lead_data.company,
         address=lead_data.address,
         external_id=lead_data.external_id,
-        service_requested=lead_data.service_requested,
+        service_requested=service_requested,
         status=lead_data.status,
         source=lead_data.source,
-        notes=lead_data.notes or [],
+        notes=combined_notes,
         interaction_history=lead_data.interaction_history or []
     )
 
@@ -134,11 +259,18 @@ async def create_lead(lead_data: LeadCreateSchema, db: Session = Depends(get_db)
 
         # Create event data for workflow detection
         form_data = {
-            "service_requested": lead_data.service_requested,
+            "service_requested": service_requested,
             "company": lead_data.company,
             "phone": lead_data.phone,
             "address": lead_data.address
         }
+
+        # Add rich project data to form_data for agent context
+        if lead_data.project_data:
+            form_data.update({
+                "project_data": lead_data.project_data.dict(),
+                "platform_metadata": lead_data.platform_metadata
+            })
 
         # Trigger workflow for new lead
         session_ids = workflow_service.handle_lead_created(

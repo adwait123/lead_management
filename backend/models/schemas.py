@@ -26,6 +26,42 @@ class InteractionSchema(BaseModel):
     agent_id: Optional[int] = None
     agent_name: Optional[str] = None
 
+# Survey and Project Data schemas
+class SurveyAnswerSchema(BaseModel):
+    question_text: str
+    question_identifier: Optional[str] = None
+    answer_text: List[str]
+
+class AttachmentSchema(BaseModel):
+    id: Optional[str] = None
+    url: str
+    resource_name: str
+    mime_type: str
+
+class AvailabilitySchema(BaseModel):
+    status: str  # "SPECIFIC_DATES", "FLEXIBLE", etc.
+    dates: Optional[List[str]] = []
+    time_preferences: Optional[Dict[str, Any]] = {}
+
+class ProjectLocationSchema(BaseModel):
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    country: Optional[str] = None
+    full_address: Optional[str] = None
+
+class ProjectDataSchema(BaseModel):
+    """Rich project data structure matching Yelp format"""
+    job_names: Optional[List[str]] = []
+    additional_info: Optional[str] = None
+    location: Optional[ProjectLocationSchema] = None
+    availability: Optional[AvailabilitySchema] = None
+    survey_answers: Optional[List[SurveyAnswerSchema]] = []
+    attachments: Optional[List[AttachmentSchema]] = []
+    budget_range: Optional[str] = None
+    timeline: Optional[str] = None
+    special_requirements: Optional[str] = None
+
 # Lead schemas
 class LeadBaseSchema(BaseModel):
     name: Optional[str] = None
@@ -43,6 +79,12 @@ class LeadBaseSchema(BaseModel):
 class LeadCreateSchema(LeadBaseSchema):
     notes: Optional[List[Dict[str, Any]]] = []
     interaction_history: Optional[List[Dict[str, Any]]] = []
+
+    # Rich project data support
+    project_data: Optional[ProjectDataSchema] = None
+
+    # Platform-specific metadata (for Yelp IDs, conversation IDs, etc.)
+    platform_metadata: Optional[Dict[str, Any]] = {}
 
 class LeadUpdateSchema(BaseModel):
     name: Optional[str] = None
