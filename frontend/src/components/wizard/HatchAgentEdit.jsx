@@ -7,11 +7,13 @@ import { Card } from '../ui/Card';
 import { AgentBasicsTab } from './tabs/AgentBasicsTab';
 import { KnowledgeBaseTab } from './tabs/KnowledgeBaseTab';
 import { AIInstructionsTab } from './tabs/AIInstructionsTab';
+import { WorkflowConfigTab } from './tabs/WorkflowConfigTab';
 
 const configTabs = [
   { id: 'basics', title: 'Agent Basics', component: AgentBasicsTab },
   { id: 'knowledge', title: 'Knowledge', component: KnowledgeBaseTab },
-  { id: 'instructions', title: 'AI Instructions', component: AIInstructionsTab }
+  { id: 'instructions', title: 'AI Instructions', component: AIInstructionsTab },
+  { id: 'workflows', title: 'Triggers & Follow-ups', component: WorkflowConfigTab }
 ];
 
 function HatchEditContent() {
