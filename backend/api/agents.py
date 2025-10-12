@@ -103,7 +103,7 @@ async def get_agents(
     total_pages = math.ceil(total / per_page)
 
     return AgentListResponseSchema(
-        agents=[AgentResponseSchema.model_validate(agent) for agent in agents],
+        agents=[AgentResponseSchema.from_orm(agent) for agent in agents],
         total=total,
         page=page,
         per_page=per_page,
@@ -116,7 +116,7 @@ async def get_agent(agent_id: int, db: Session = Depends(get_db)):
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    return AgentResponseSchema.model_validate(agent)
+    return AgentResponseSchema.from_orm(agent)
 
 @router.post("/", response_model=AgentResponseSchema)
 async def create_agent(agent_data: AgentCreateSchema, db: Session = Depends(get_db)):
@@ -177,7 +177,7 @@ async def create_agent(agent_data: AgentCreateSchema, db: Session = Depends(get_
     db.commit()
     db.refresh(agent)
 
-    return AgentResponseSchema.model_validate(agent)
+    return AgentResponseSchema.from_orm(agent)
 
 @router.put("/{agent_id}", response_model=AgentResponseSchema)
 async def update_agent(agent_id: int, agent_data: AgentUpdateSchema, db: Session = Depends(get_db)):
@@ -194,7 +194,7 @@ async def update_agent(agent_id: int, agent_data: AgentUpdateSchema, db: Session
     db.commit()
     db.refresh(agent)
 
-    return AgentResponseSchema.model_validate(agent)
+    return AgentResponseSchema.from_orm(agent)
 
 @router.delete("/{agent_id}")
 async def delete_agent(agent_id: int, db: Session = Depends(get_db)):
