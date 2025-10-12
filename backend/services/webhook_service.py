@@ -44,6 +44,9 @@ class WebhookService:
             List of success status for each webhook URL
         """
         try:
+            # Refresh database session to ensure we have latest data
+            self.db.commit()
+
             # Get session, lead, and agent data
             session = self.db.query(AgentSession).filter(AgentSession.id == session_id).first()
             if not session:
@@ -59,6 +62,10 @@ class WebhookService:
             if not agent:
                 logger.error(f"Agent {session.agent_id} not found for session {session_id}")
                 return [False]
+
+            # Log webhook data for debugging
+            logger.info(f"Webhook data - Session ID: {session_id}, Lead: {lead.name}, Agent: {agent.name}, Message: {message_content[:100]}")
+            logger.info(f"Lead details - ID: {lead.id}, External ID: {lead.external_id}, Email: {lead.email}")
 
             # Build webhook payload
             payload = {
@@ -97,6 +104,9 @@ class WebhookService:
                     "message_count": session.message_count
                 }
             }
+
+            # Log the full payload for debugging
+            logger.info(f"Webhook payload: {json.dumps(payload, indent=2)}")
 
             # Send to all configured webhook URLs
             results = []
