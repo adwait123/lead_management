@@ -38,6 +38,11 @@ class MessageRoutingResponseSchema(BaseModel):
     escalation_message: Optional[str] = None
     error: Optional[str] = None
     message: Optional[str] = None
+    # New fields for automatic agent response
+    agent_response_generated: Optional[bool] = None
+    agent_response_id: Optional[int] = None
+    agent_response_error: Optional[str] = None
+    agent_response_skip_reason: Optional[str] = None
 
 class AgentResponseSchema(BaseModel):
     session_id: int
@@ -62,7 +67,7 @@ router = APIRouter(prefix="/api/messages", tags=["messages"])
 
 @router.post("/route", response_model=MessageRoutingResponseSchema)
 async def route_message(message_data: IncomingMessageSchema, db: Session = Depends(get_db)):
-    """Route an incoming message to the appropriate agent session"""
+    """Route an incoming message to the appropriate agent session and generate agent response"""
 
     # Validate lead exists
     lead = db.query(Lead).filter(Lead.id == message_data.lead_id).first()
@@ -77,6 +82,42 @@ async def route_message(message_data: IncomingMessageSchema, db: Session = Depen
             message_type=message_data.message_type,
             metadata=message_data.metadata
         )
+
+        # If routing was successful and agent should respond, generate agent response automatically
+        if result.get("success") and result.get("should_respond") and result.get("session_id"):
+            try:
+                from services.agent_service import AgentService
+
+                # Get session to check if it's taken over
+                session = db.query(AgentSession).filter(AgentSession.id == result["session_id"]).first()
+
+                if session and session.session_status != "taken_over":
+                    logger.info(f"Generating automatic agent response for session {result['session_id']}")
+
+                    agent_service = AgentService(db)
+                    response_message = await agent_service.generate_response_message(
+                        agent_session_id=result["session_id"],
+                        incoming_message=message_data.message
+                    )
+
+                    if response_message:
+                        logger.info(f"Generated automatic response message {response_message.id} for session {result['session_id']}")
+                        # Add response info to result
+                        result["agent_response_generated"] = True
+                        result["agent_response_id"] = response_message.id
+                    else:
+                        logger.error(f"Failed to generate automatic agent response for session {result['session_id']}")
+                        result["agent_response_generated"] = False
+                        result["agent_response_error"] = "Failed to generate response"
+                else:
+                    logger.info(f"Skipping agent response - session {result['session_id']} is taken over or not found")
+                    result["agent_response_generated"] = False
+                    result["agent_response_skip_reason"] = "Session taken over or not found"
+
+            except Exception as e:
+                logger.error(f"Error generating automatic agent response: {str(e)}")
+                result["agent_response_generated"] = False
+                result["agent_response_error"] = str(e)
 
         return MessageRoutingResponseSchema(**result)
 
