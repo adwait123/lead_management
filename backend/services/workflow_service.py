@@ -2,7 +2,6 @@
 Workflow Service for handling agent trigger detection and session management
 """
 import logging
-import asyncio
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -300,37 +299,15 @@ class WorkflowService:
     def _trigger_initial_message_generation(self, session_id: int, lead: Lead, event_data: Dict[str, Any]):
         """Trigger initial message generation for a new agent session"""
         try:
-            # Import here to avoid circular imports
-            from services.agent_service import AgentService
+            logger.info(f"Triggering initial message generation for session {session_id}")
 
-            # Create agent service with a new DB session to avoid conflicts
-            agent_service = AgentService(self.db)
+            # Use the existing synchronous method instead of async approach
+            success = self.generate_initial_message_sync(session_id)
 
-            # Extract project details from event data for context
-            project_details = event_data.get('form_data', {})
-
-            # Build lead data dictionary
-            lead_data = {
-                "id": lead.id,
-                "name": lead.name,
-                "first_name": lead.first_name,
-                "last_name": lead.last_name,
-                "email": lead.email,
-                "phone": lead.phone,
-                "company": lead.company,
-                "service_requested": lead.service_requested,
-                "source": lead.source
-            }
-
-            # Schedule async message generation
-            # Note: We run this in a background task to avoid blocking the webhook response
-            asyncio.create_task(
-                self._generate_initial_message_async(
-                    agent_service, session_id, lead_data, project_details
-                )
-            )
-
-            logger.info(f"Scheduled initial message generation for session {session_id}")
+            if success:
+                logger.info(f"Successfully generated initial message for session {session_id}")
+            else:
+                logger.error(f"Failed to generate initial message for session {session_id}")
 
         except Exception as e:
             logger.error(f"Error triggering initial message generation for session {session_id}: {str(e)}")
