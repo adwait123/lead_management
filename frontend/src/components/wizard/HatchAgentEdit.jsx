@@ -135,13 +135,52 @@ function HatchEditContent() {
 
             if (noResponseSteps.length > 0) {
               workflows.followUps.noResponse.enabled = true;
-              workflows.followUps.noResponse.sequence = noResponseSteps.map((step, index) => ({
-                id: `step_${index + 1}`,
-                delay: step.trigger?.delay_minutes || (step.trigger?.delay_hours ? step.trigger.delay_hours * 60 : 60),
-                unit: step.trigger?.delay_minutes ? 'minutes' : 'hours',
-                message: step.action?.message_template || step.action?.message || `Follow-up message ${index + 1}`
-              }));
+              workflows.followUps.noResponse.sequence = noResponseSteps.map((step, index) => {
+                // Smart unit detection - preserve the most logical unit based on the value
+                const delayMinutes = step.trigger?.delay_minutes || 0;
+                let delay, unit;
+
+                if (delayMinutes >= 1440 && delayMinutes % 1440 === 0) {
+                  // If it's a whole number of days
+                  delay = delayMinutes / 1440;
+                  unit = 'days';
+                } else if (delayMinutes >= 60 && delayMinutes % 60 === 0) {
+                  // If it's a whole number of hours
+                  delay = delayMinutes / 60;
+                  unit = 'hours';
+                } else {
+                  // Otherwise use minutes
+                  delay = delayMinutes;
+                  unit = 'minutes';
+                }
+
+                return {
+                  id: `step_${index + 1}`,
+                  delay: delay || 1,
+                  unit: unit,
+                  message: step.action?.message_template || step.action?.message || `Follow-up message ${index + 1}`
+                };
+              });
             }
+          }
+
+          // Also check for legacy follow_ups field from API-created agents
+          if (agentData.follow_ups && Array.isArray(agentData.follow_ups)) {
+            agentData.follow_ups.forEach((followUp, index) => {
+              workflows.followUps.noResponse.enabled = true;
+
+              // If there's no sequence yet, create one
+              if (!workflows.followUps.noResponse.sequence) {
+                workflows.followUps.noResponse.sequence = [];
+              }
+
+              workflows.followUps.noResponse.sequence.push({
+                id: `api_step_${index + 1}`,
+                delay: followUp.delay_hours || 24,
+                unit: 'hours',
+                message: followUp.message || `Follow-up message ${index + 1}`
+              });
+            });
           }
 
           return workflows;
