@@ -351,22 +351,43 @@ class AgentService:
             "timestamp": datetime.utcnow().isoformat()
         }
 
-        # Extract Yelp-specific data if available
-        if project_details and "yelp_data" in project_details:
-            yelp_data = project_details["yelp_data"]
-            project_info = project_details.get("project", {})
-
-            context["yelp"] = {
-                "conversation_id": yelp_data.get("conversation_id"),
-                "business_id": yelp_data.get("business_id"),
-                "project": {
-                    "job_names": project_info.get("job_names", []),
-                    "location": project_info.get("location", {}),
-                    "additional_info": project_info.get("additional_info"),
-                    "availability": project_info.get("availability", {}),
-                    "survey_answers": project_info.get("survey_answers", [])
+        # Extract rich project data if available (supports both legacy Yelp format and new rich format)
+        if project_details:
+            # Check for new rich project_data format
+            if "project_data" in project_details:
+                project_data = project_details["project_data"]
+                context["project"] = {
+                    "job_names": project_data.get("job_names", []),
+                    "location": project_data.get("location", {}),
+                    "additional_info": project_data.get("additional_info"),
+                    "availability": project_data.get("availability", {}),
+                    "survey_answers": project_data.get("survey_answers", []),
+                    "attachments": project_data.get("attachments", []),
+                    "budget_range": project_data.get("budget_range"),
+                    "timeline": project_data.get("timeline"),
+                    "special_requirements": project_data.get("special_requirements")
                 }
-            }
+
+                # Also include platform metadata if available
+                if "platform_metadata" in project_details:
+                    context["platform"] = project_details["platform_metadata"]
+
+            # Legacy Yelp-specific data format (maintain backward compatibility)
+            elif "yelp_data" in project_details:
+                yelp_data = project_details["yelp_data"]
+                project_info = project_details.get("project", {})
+
+                context["yelp"] = {
+                    "conversation_id": yelp_data.get("conversation_id"),
+                    "business_id": yelp_data.get("business_id"),
+                    "project": {
+                        "job_names": project_info.get("job_names", []),
+                        "location": project_info.get("location", {}),
+                        "additional_info": project_info.get("additional_info"),
+                        "availability": project_info.get("availability", {}),
+                        "survey_answers": project_info.get("survey_answers", [])
+                    }
+                }
 
         return context
 
@@ -566,8 +587,24 @@ Lead Details:
 
 """
 
-        # Add Yelp-specific project context if available
-        if "yelp" in context and context["yelp"]["project"]:
+        # Add rich project context if available
+        if "project" in context and context["project"]:
+            project = context["project"]
+            project_context = f"""
+Project Information:
+- Services Needed: {', '.join(project.get('job_names', []))}
+- Project Details: {project.get('additional_info', 'None provided')}
+- Budget Range: {project.get('budget_range', 'Not specified')}
+- Timeline: {project.get('timeline', 'Not specified')}
+- Location: {project.get('location', {}).get('postal_code', 'Not specified')}
+- Special Requirements: {project.get('special_requirements', 'None')}
+- Survey Responses: {self._format_survey_answers(project.get('survey_answers', []))}
+- Attachments: {len(project.get('attachments', []))} files provided
+"""
+            initial_message_instruction += project_context
+
+        # Add legacy Yelp-specific project context if available (backward compatibility)
+        elif "yelp" in context and context["yelp"]["project"]:
             project = context["yelp"]["project"]
             yelp_context = f"""
 Yelp Project Information:
@@ -615,7 +652,9 @@ IMPORTANT: Review the conversation history provided in the messages above to und
         message = "Generate your initial greeting message for this new lead based on the context provided above."
 
         # Add any additional context that might be helpful
-        if "yelp" in context and context["yelp"]["project"]:
+        if "project" in context and context["project"]:
+            message += " This lead has provided detailed project information including survey responses."
+        elif "yelp" in context and context["yelp"]["project"]:
             message += " This lead came from Yelp and has provided specific project details."
 
         return message
@@ -678,8 +717,27 @@ IMPORTANT: Review the conversation history provided in the messages above to und
             "trigger_type": context.get('session', {}).get('trigger_type', ''),
         }
 
-        # Add Yelp-specific variables if available
-        if "yelp" in context:
+        # Add rich project data variables if available
+        if "project" in context:
+            project = context["project"]
+            variables.update({
+                "job_types": ', '.join(project.get('job_names', [])),
+                "services_needed": ', '.join(project.get('job_names', [])),
+                "project_details": project.get('additional_info', ''),
+                "additional_info": project.get('additional_info', ''),
+                "budget_range": project.get('budget_range', ''),
+                "timeline": project.get('timeline', ''),
+                "location": project.get('location', {}).get('postal_code', ''),
+                "postal_code": project.get('location', {}).get('postal_code', ''),
+                "city": project.get('location', {}).get('city', ''),
+                "state": project.get('location', {}).get('state', ''),
+                "special_requirements": project.get('special_requirements', ''),
+                "survey_responses": self._format_survey_answers(project.get('survey_answers', [])),
+                "attachment_count": str(len(project.get('attachments', [])))
+            })
+
+        # Add legacy Yelp-specific variables if available (backward compatibility)
+        elif "yelp" in context:
             project = context["yelp"]["project"]
             variables.update({
                 "job_types": ', '.join(project.get('job_names', [])),
