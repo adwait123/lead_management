@@ -7,7 +7,6 @@ document.getElementById('consultation-form').addEventListener('submit', function
     const address = document.getElementById('address').value;
     const serviceInterest = document.getElementById('service-interest').value;
     const projectTimeline = document.getElementById('project-timeline').value;
-    const additionalDetails = document.getElementById('additional-details').value;
 
     // Basic validation
     if (!fullName || !phone || !email || !address || !serviceInterest || !projectTimeline) {
@@ -28,7 +27,7 @@ document.getElementById('consultation-form').addEventListener('submit', function
         address: address,
         source: 'torkin website',
         service_requested: serviceInterest,
-        notes: `Project Timeline: ${projectTimeline}. Additional Details: ${additionalDetails}`
+        notes: [{ "content": `Project Timeline: ${projectTimeline}` }]
     };
 
     fetch('https://lead-management-staging-backend.onrender.com/api/leads/', {
@@ -41,8 +40,11 @@ document.getElementById('consultation-form').addEventListener('submit', function
     .then(response => {
         if (response.ok) {
             return response.json();
+        } else {
+            // Log the error response for more details
+            response.json().then(err => console.error('API Error:', err));
+            throw new Error('Network response was not ok.');
         }
-        throw new Error('Network response was not ok.');
     })
     .then(data => {
         console.log('Success:', data);
@@ -50,7 +52,7 @@ document.getElementById('consultation-form').addEventListener('submit', function
         document.getElementById('consultation-form').reset();
     })
     .catch((error) => {
-        console.error('Error:', error);
+        console.error('Fetch Error:', error);
         alert('There was a problem with your submission. Please try again later.');
     });
 });
