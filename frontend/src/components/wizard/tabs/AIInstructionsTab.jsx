@@ -18,6 +18,7 @@ export function AIInstructionsTab() {
   const [promptGenerationMode, setPromptGenerationMode] = useState('summary'); // 'summary' or 'scenario'
   const [generationInput, setGenerationInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isLoadingPrompt, setIsLoadingPrompt] = useState(false);
   const textareaRef = useRef(null);
 
   // Debug component mounting and wizard data
@@ -415,28 +416,37 @@ export function AIInstructionsTab() {
   // Load starter prompt if empty
   useEffect(() => {
     console.log(`🔄 useEffect triggered - prompt: ${prompt ? 'exists' : 'empty'}, agentName: ${wizardData.persona?.agentName}, useCase: ${wizardData.useCase}`);
-    console.log(`🔍 Full wizardData object:`, wizardData);
-    console.log(`🎯 Alternative useCase paths:`, {
-      'wizardData.useCase': wizardData.useCase,
-      'wizardData.selectedTemplate?.id': wizardData.selectedTemplate?.id,
-      'wizardData.selectedTemplate?.useCase': wizardData.selectedTemplate?.useCase
-    });
 
-    const useCase = wizardData.useCase || wizardData.selectedTemplate?.id || urlUseCase || storedUseCase;
-    console.log(`🎲 Resolved useCase: ${useCase} (from ${wizardData.useCase ? 'wizardData.useCase' : wizardData.selectedTemplate?.id ? 'selectedTemplate.id' : urlUseCase ? 'URL param' : storedUseCase ? 'localStorage' : 'none'})`);
+    try {
+      const useCase = wizardData.useCase || wizardData.selectedTemplate?.id || urlUseCase || storedUseCase;
+      console.log(`🎲 Resolved useCase: ${useCase}`);
 
-    if (!prompt && (wizardData.persona?.agentName || useCase)) {
-      console.log(`✅ Conditions met, loading prompt...`);
-      const loadPrompt = async () => {
-        console.log(`🎯 Using useCase for prompt generation: ${useCase}`);
-        const starter = await generateStarterPromptWithUseCase(useCase);
-        console.log(`📝 Setting prompt in state and wizard data...`);
-        setPrompt(starter);
-        updateWizardData({ instructions: { ...wizardData.instructions, systemPrompt: starter } });
-      };
-      loadPrompt();
-    } else {
-      console.log(`❌ Conditions not met for loading prompt`);
+      if (!prompt && (wizardData.persona?.agentName || useCase)) {
+        console.log(`✅ Conditions met, loading prompt...`);
+        const loadPrompt = async () => {
+          setIsLoadingPrompt(true);
+          try {
+            console.log(`🎯 Using useCase for prompt generation: ${useCase}`);
+            const starter = await generateStarterPromptWithUseCase(useCase);
+            console.log(`📝 Setting prompt in state and wizard data...`);
+            setPrompt(starter);
+            updateWizardData({ instructions: { ...wizardData.instructions, systemPrompt: starter } });
+          } catch (error) {
+            console.error('❌ Error in loadPrompt:', error);
+            // Fallback to simple prompt on error
+            const fallbackPrompt = generateFallbackPrompt();
+            setPrompt(fallbackPrompt);
+            updateWizardData({ instructions: { ...wizardData.instructions, systemPrompt: fallbackPrompt } });
+          } finally {
+            setIsLoadingPrompt(false);
+          }
+        };
+        loadPrompt();
+      } else {
+        console.log(`❌ Conditions not met for loading prompt`);
+      }
+    } catch (error) {
+      console.error('❌ Error in useEffect:', error);
     }
   }, [wizardData.persona?.agentName, wizardData.useCase, wizardData.selectedTemplate?.id]); // Watch both paths
 
@@ -468,6 +478,31 @@ export function AIInstructionsTab() {
 
     return rendered;
   };
+
+  // Show loading spinner if loading prompt
+  if (isLoadingPrompt) {
+    return (
+      <div className="space-y-8">
+        <div className="text-center">
+          <h2 className="text-3xl font-bold text-gray-900 mb-4">
+            AI Instructions
+          </h2>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            Create the prompt that defines how your AI agent behaves. Use slash commands to add interactive tools.
+          </p>
+        </div>
+        <div className="flex justify-center items-center py-12">
+          <div className="flex items-center space-x-3">
+            <svg className="animate-spin w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span className="text-gray-600">Loading prompt template...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
