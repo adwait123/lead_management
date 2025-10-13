@@ -4,7 +4,7 @@ Leads API endpoints
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
-from typing import Optional
+from typing import Optional, List, Dict, Any
 import math
 import logging
 from datetime import datetime
