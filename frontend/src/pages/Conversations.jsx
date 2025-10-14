@@ -51,21 +51,20 @@ export function Conversations() {
       setShowChat(true)
       return
     }
-    
+
     setSelectedConversation(conversation)
     setShowChat(true)
-    setSelectedLead(null)
-    setLoadingLead(true)
 
-    try {
-      const leadResponse = await leadsAPI.getById(conversation.lead_id)
-      setSelectedLead(leadResponse.data)
-    } catch (err) {
-      console.error('Error loading lead details:', err)
-      setSelectedLead(null)
-    } finally {
-      setLoadingLead(false)
+    // Create lead info from conversation data instead of fetching separately
+    const leadInfo = {
+      id: conversation.lead_id,
+      name: conversation.lead_name,
+      // We'll use the conversation data we already have
+      // If more lead details are needed later, they can be fetched on demand
     }
+
+    setSelectedLead(leadInfo)
+    setLoadingLead(false) // No loading needed since we use existing data
   }
 
   /**
@@ -181,7 +180,7 @@ export function Conversations() {
             )}
             {!loadingLead && selectedLead && (
               <ChatContainer
-                leadExternalId={selectedLead.external_id}
+                leadId={selectedLead.id}
                 leadInfo={selectedLead}
                 sessionInfo={selectedConversation}
                 businessOwnerMode={businessOwnerMode}
