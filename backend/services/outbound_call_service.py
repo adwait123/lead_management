@@ -169,8 +169,8 @@ class OutboundCallService:
 
     async def _dispatch_livekit_call(self, call: Call, validated_phone: str, lead: Lead) -> bool:
         """
-        Dispatch real outbound call using LiveKit Python API.
-        Uses the working approach from the outbound-call-support repository.
+        Use LiveKit Python API to dispatch the call.
+        EXACT copy from working outbound-call-support repository.
         """
         try:
             import json
@@ -187,7 +187,7 @@ class OutboundCallService:
                 "lead_id": str(lead.id),
                 "call_id": str(call.id),
                 "call_type": "sales_outbound",
-                "agent_name": "Sarah",
+                "agent_name": "Mike",
                 "customer_info": {
                     "first_name": lead.first_name or lead.name or "Customer",
                     "last_name": lead.last_name or "",
@@ -203,13 +203,14 @@ class OutboundCallService:
             # Get agent name from environment
             agent_name = os.getenv("AGENT_NAME", "outbound_call_agent")
 
-            logger.info(f"Executing LiveKit dispatch via Python API for room: {room_name}")
-
-            # Initialize LiveKit API client
+            # Get LiveKit credentials
             livekit_url = os.getenv('LIVEKIT_URL')
             livekit_api_key = os.getenv('LIVEKIT_API_KEY')
             livekit_api_secret = os.getenv('LIVEKIT_API_SECRET')
 
+            logger.info(f"Executing LiveKit dispatch via Python API for room: {room_name}")
+
+            # Initialize LiveKit API client
             api = LiveKitAPI(livekit_url, livekit_api_key, livekit_api_secret)
 
             # Create room first
@@ -217,16 +218,16 @@ class OutboundCallService:
             room = await api.room.create_room(room_request)
             logger.info(f"Created room: {room.name}")
 
-            # Create agent dispatch request (THIS WAS THE MISSING PIECE!)
+            # Create agent dispatch request
             dispatch_request = CreateAgentDispatchRequest(
                 room=room_name,
                 agent_name=agent_name,
                 metadata=json.dumps(metadata)
             )
 
-            # Dispatch the agent to the room
+            # Dispatch the agent
             dispatch_response = await api.agent_dispatch.create_dispatch(dispatch_request)
-            logger.info(f"Agent dispatch successful: {dispatch_response}")
+            logger.info(f"Dispatch successful: {dispatch_response}")
 
             # Update call status
             call.call_status = "in_progress"
@@ -239,7 +240,7 @@ class OutboundCallService:
             return True
 
         except Exception as e:
-            logger.error(f"Error in LiveKit dispatch: {str(e)}")
+            logger.error(f"LiveKit API dispatch failed: {str(e)}")
             call.call_status = "failed"
             call.error_message = f"LiveKit dispatch error: {str(e)}"
             call.ended_at = datetime.utcnow()
