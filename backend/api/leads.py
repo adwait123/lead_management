@@ -302,18 +302,17 @@ async def create_lead(lead_data: LeadCreateSchema, db: Session = Depends(get_db)
         logger.error(f"Failed to send webhook for lead {lead.id}: {str(e)}")
         # Don't fail the lead creation if webhook sending fails
 
-    # Trigger outbound call for Torkin website leads (Demo feature)
+    # Trigger outbound call for Torkin leads via web service API
     try:
-        if lead_data.source == "torkin website" and lead.phone:
-            from services.outbound_call_service import OutboundCallService
+        if lead_data.source == "torkin" and lead.phone:
+            from services.outbound_web_service import OutboundWebService
             from models.agent import Agent
             from models.call import Call
 
-            # Find an active voice-enabled agent for outbound calling
-            from sqlalchemy import text
+            # Find an active outbound calling agent
             outbound_agent = db.query(Agent).filter(
                 Agent.is_active == True,
-                text("JSON_EXTRACT(conversation_settings, '$.voice_enabled') = true")
+                Agent.type == "outbound"
             ).first()
 
             if outbound_agent:
@@ -328,7 +327,8 @@ async def create_lead(lead_data: LeadCreateSchema, db: Session = Depends(get_db)
                         "triggered_by": "lead_creation",
                         "agent_name": outbound_agent.name,
                         "demo_mode": True,
-                        "auto_triggered": True
+                        "auto_triggered": True,
+                        "dispatch_method": "web_service"
                     }
                 )
 
@@ -336,11 +336,11 @@ async def create_lead(lead_data: LeadCreateSchema, db: Session = Depends(get_db)
                 db.commit()
                 db.refresh(call)
 
-                # Schedule the call dispatch
-                call_service = OutboundCallService(db)
-                asyncio.create_task(call_service.dispatch_call(call.id))
+                # Schedule the call dispatch via web service
+                web_service = OutboundWebService(db)
+                asyncio.create_task(web_service.dispatch_call(call.id))
 
-                logger.info(f"Scheduled outbound call {call.id} for Torkin website lead {lead.id}")
+                logger.info(f"Scheduled web service outbound call {call.id} for Torkin lead {lead.id}")
             else:
                 logger.warning(f"No outbound calling agent found for lead {lead.id}")
 

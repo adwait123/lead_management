@@ -69,7 +69,7 @@ def create_demo_outbound_agent():
                 {
                     "event": "new_lead",
                     "condition": {
-                        "source": "torkin website"
+                        "source": "torkin"
                     },
                     "active": True
                 }

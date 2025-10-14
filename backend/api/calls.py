@@ -154,11 +154,11 @@ async def trigger_outbound_call(
     if not lead.phone:
         raise HTTPException(status_code=400, detail="Lead has no phone number")
 
-    # Demo restriction: Only allow calls for Torkin website leads
-    if not trigger_data.force_call and lead.source != "torkin website":
+    # Demo restriction: Only allow calls for Torkin leads
+    if not trigger_data.force_call and lead.source != "torkin":
         raise HTTPException(
             status_code=400,
-            detail="Demo mode: Outbound calling only available for 'torkin website' leads"
+            detail="Demo mode: Outbound calling only available for 'torkin' leads"
         )
 
     # Find appropriate outbound calling agent
@@ -221,7 +221,7 @@ async def trigger_outbound_call(
         "call_id": call.id,
         "message": f"Outbound call scheduled for {lead.first_name or lead.name or 'lead'} ({lead.phone})",
         "agent": agent.name,
-        "demo_notice": "Demo mode: Using hardcoded prompt for Torkin website integration"
+        "demo_notice": "Demo mode: Using hardcoded prompt for Torkin integration"
     }
 
 

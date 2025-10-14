@@ -269,9 +269,9 @@ class OutboundCallService:
         if not lead.phone:
             return False, "Lead has no phone number"
 
-        # Demo restriction: Only Torkin website leads
-        if lead.source != "torkin website":
-            return False, "Demo mode: Only 'torkin website' leads can be called"
+        # Demo restriction: Only Torkin leads
+        if lead.source != "torkin":
+            return False, "Demo mode: Only 'torkin' leads can be called"
 
         # Check for existing active calls
         existing_call = self.db.query(Call).filter(
