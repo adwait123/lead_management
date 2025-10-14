@@ -1,7 +1,8 @@
 document.getElementById('consultation-form').addEventListener('submit', function(event) {
     event.preventDefault();
 
-    const fullName = document.getElementById('full-name').value;
+    const firstName = document.getElementById('first-name').value;
+    const lastName = document.getElementById('last-name').value;
     const phone = document.getElementById('phone').value;
     const email = document.getElementById('email').value;
     const address = document.getElementById('address').value;
@@ -9,23 +10,18 @@ document.getElementById('consultation-form').addEventListener('submit', function
     const projectTimeline = document.getElementById('project-timeline').value;
 
     // Basic validation
-    if (!fullName || !phone || !email || !address || !serviceInterest || !projectTimeline) {
+    if (!firstName || !lastName || !phone || !email || !address || !serviceInterest || !projectTimeline) {
         alert('Please fill out all required fields.');
         return;
     }
 
-    const nameParts = fullName.split(' ');
-    const firstName = nameParts[0];
-    const lastName = nameParts.slice(1).join(' ');
-
     const leadData = {
-        name: fullName,
         first_name: firstName,
         last_name: lastName,
         phone: phone,
         email: email,
         address: address,
-        source: 'torkin website',
+        source: 'torkin',
         service_requested: serviceInterest,
         notes: [{ "content": `Project Timeline: ${projectTimeline}` }]
     };
