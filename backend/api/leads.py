@@ -309,10 +309,11 @@ async def create_lead(lead_data: LeadCreateSchema, db: Session = Depends(get_db)
             from models.agent import Agent
             from models.call import Call
 
-            # Find an active outbound calling agent
+            # Find an active voice-enabled agent for outbound calling
+            from sqlalchemy import text
             outbound_agent = db.query(Agent).filter(
                 Agent.is_active == True,
-                Agent.type == "outbound"
+                text("JSON_EXTRACT(conversation_settings, '$.voice_enabled') = true")
             ).first()
 
             if outbound_agent:
