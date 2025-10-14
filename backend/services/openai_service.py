@@ -1,3 +1,4 @@
+
 """
 OpenAI Service
 Handles all OpenAI API interactions for chat completions and prompt generation
@@ -10,6 +11,7 @@ from fastapi import HTTPException
 import json
 import logging
 from dotenv import load_dotenv
+import httpx
 
 # Load environment variables
 load_dotenv()
@@ -27,6 +29,17 @@ class OpenAIService:
             self.available = False
         else:
             self.available = True
+
+    def _get_openai_client(self):
+        """Creates an OpenAI client with proxy support."""
+        proxies = {
+            "http://": os.environ.get("HTTP_PROXY"),
+            "https://": os.environ.get("HTTPS_PROXY"),
+        }
+        return openai.OpenAI(
+            api_key=self.api_key,
+            http_client=httpx.Client(proxies=proxies)
+        )
 
     def is_available(self) -> bool:
         """Check if OpenAI service is available"""
@@ -74,8 +87,7 @@ class OpenAIService:
 
             # Try new API format first (v1.0+), fallback to old format
             try:
-                from openai import OpenAI
-                client = OpenAI(api_key=self.api_key)
+                client = self._get_openai_client()
 
                 response = client.chat.completions.create(
                     model=model,
@@ -191,8 +203,7 @@ Format the response as a complete, ready-to-use system prompt."""
         try:
             # Try new API format first (v1.0+), fallback to old format
             try:
-                from openai import OpenAI
-                client = OpenAI(api_key=self.api_key)
+                client = self._get_openai_client()
 
                 response = client.chat.completions.create(
                     model=model,
@@ -328,8 +339,7 @@ Make the prompt comprehensive but practical for real-world use."""
         try:
             # Try new API format first (v1.0+), fallback to old format
             try:
-                from openai import OpenAI
-                client = OpenAI(api_key=self.api_key)
+                client = self._get_openai_client()
 
                 response = client.chat.completions.create(
                     model=model,
@@ -454,8 +464,7 @@ Respond with JSON containing:
         try:
             # Try new API format first (v1.0+), fallback to old format
             try:
-                from openai import OpenAI
-                client = OpenAI(api_key=self.api_key)
+                client = self._get_openai_client()
 
                 response = client.chat.completions.create(
                     model=model,
