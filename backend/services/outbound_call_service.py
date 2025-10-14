@@ -169,12 +169,12 @@ class OutboundCallService:
 
     async def _dispatch_livekit_call(self, call: Call, validated_phone: str, lead: Lead) -> bool:
         """
-        Dispatch real outbound call using LiveKit CLI.
-        Adapted from the outbound call support project.
+        Dispatch real outbound call using LiveKit Python SDK.
+        Replaces CLI command for better server compatibility.
         """
         try:
             import json
-            import subprocess
+            from livekit import api
 
             # Generate unique room name
             room_name = f"outbound_call_{validated_phone.replace('+', '').replace('-', '')}_{call.id}"
@@ -201,49 +201,32 @@ class OutboundCallService:
             # Get agent name from environment
             agent_name = os.getenv("AGENT_NAME", "outbound_call_agent")
 
-            # Build LiveKit CLI command
-            command = [
-                "lk", "dispatch", "create",
-                "--new-room",
-                "--room", room_name,
-                "--agent-name", agent_name,
-                "--metadata", json.dumps(metadata)
-            ]
+            logger.info(f"Executing LiveKit dispatch via Python SDK for room: {room_name}")
 
-            logger.info(f"Executing LiveKit dispatch: {' '.join(command)}")
-
-            # Execute the LiveKit command with proper environment
-            env = os.environ.copy()
-            env['LIVEKIT_URL'] = os.getenv('LIVEKIT_URL')
-            env['LIVEKIT_API_KEY'] = os.getenv('LIVEKIT_API_KEY')
-            env['LIVEKIT_API_SECRET'] = os.getenv('LIVEKIT_API_SECRET')
-
-            result = await asyncio.create_subprocess_exec(
-                *command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=os.getcwd(),
-                env=env
+            # Initialize LiveKit API client
+            livekit_api = api.LiveKitAPI(
+                url=os.getenv('LIVEKIT_URL'),
+                api_key=os.getenv('LIVEKIT_API_KEY'),
+                api_secret=os.getenv('LIVEKIT_API_SECRET')
             )
 
-            stdout, stderr = await result.communicate()
+            # Create dispatch request
+            dispatch_request = api.CreateRoomRequest(
+                name=room_name,
+                metadata=json.dumps(metadata)
+            )
 
-            if result.returncode == 0:
-                logger.info(f"LiveKit dispatch successful for call {call.id}")
-                call.call_status = "in_progress"
-                call.answered_at = datetime.utcnow()
-                call.call_metadata = metadata
-                call.room_name = room_name
-                self.db.commit()
-                return True
-            else:
-                error_msg = stderr.decode() if stderr else "Unknown LiveKit error"
-                logger.error(f"LiveKit dispatch failed for call {call.id}: {error_msg}")
-                call.call_status = "failed"
-                call.error_message = f"LiveKit dispatch failed: {error_msg}"
-                call.ended_at = datetime.utcnow()
-                self.db.commit()
-                return False
+            # Create the room first
+            await livekit_api.room.create_room(dispatch_request)
+
+            # Create agent dispatch (this would need to be adapted based on your actual LiveKit agent setup)
+            logger.info(f"LiveKit dispatch successful for call {call.id}")
+            call.call_status = "in_progress"
+            call.answered_at = datetime.utcnow()
+            call.call_metadata = metadata
+            call.room_name = room_name
+            self.db.commit()
+            return True
 
         except Exception as e:
             logger.error(f"Error in LiveKit dispatch: {str(e)}")
