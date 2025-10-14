@@ -30,7 +30,7 @@ document.getElementById('consultation-form').addEventListener('submit', function
         notes: [{ "content": `Project Timeline: ${projectTimeline}` }]
     };
 
-    fetch('https://lead-management-staging.onrender.com/api/leads/', {
+    fetch('https://lead-management-staging-backend.onrender.com/api/leads/', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
