@@ -32,14 +32,25 @@ class OpenAIService:
 
     def _get_openai_client(self):
         """Creates an OpenAI client with proxy support."""
-        proxies = {
-            "http://": os.environ.get("HTTP_PROXY"),
-            "https://": os.environ.get("HTTPS_PROXY"),
-        }
-        return openai.OpenAI(
-            api_key=self.api_key,
-            http_client=httpx.Client(proxies=proxies)
-        )
+        proxies = {}
+
+        # Only add proxy settings if they are actually set
+        http_proxy = os.environ.get("HTTP_PROXY")
+        https_proxy = os.environ.get("HTTPS_PROXY")
+
+        if http_proxy:
+            proxies["http://"] = http_proxy
+        if https_proxy:
+            proxies["https://"] = https_proxy
+
+        # Create httpx client with or without proxies
+        if proxies:
+            return openai.OpenAI(
+                api_key=self.api_key,
+                http_client=httpx.Client(proxies=proxies)
+            )
+        else:
+            return openai.OpenAI(api_key=self.api_key)
 
     def is_available(self) -> bool:
         """Check if OpenAI service is available"""
