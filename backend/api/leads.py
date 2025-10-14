@@ -302,6 +302,51 @@ async def create_lead(lead_data: LeadCreateSchema, db: Session = Depends(get_db)
         logger.error(f"Failed to send webhook for lead {lead.id}: {str(e)}")
         # Don't fail the lead creation if webhook sending fails
 
+    # Trigger outbound call for Torkin website leads (Demo feature)
+    try:
+        if lead_data.source == "torkin website" and lead.phone:
+            from services.outbound_call_service import OutboundCallService
+            from models.agent import Agent
+            from models.call import Call
+
+            # Find an active outbound calling agent
+            outbound_agent = db.query(Agent).filter(
+                Agent.is_active == True,
+                Agent.type == "outbound"
+            ).first()
+
+            if outbound_agent:
+                # Create call record
+                call = Call(
+                    lead_id=lead.id,
+                    agent_id=outbound_agent.id,
+                    phone_number=lead.phone,
+                    call_status="pending",
+                    call_metadata={
+                        "lead_source": lead.source,
+                        "triggered_by": "lead_creation",
+                        "agent_name": outbound_agent.name,
+                        "demo_mode": True,
+                        "auto_triggered": True
+                    }
+                )
+
+                db.add(call)
+                db.commit()
+                db.refresh(call)
+
+                # Schedule the call dispatch
+                call_service = OutboundCallService(db)
+                asyncio.create_task(call_service.dispatch_call(call.id))
+
+                logger.info(f"Scheduled outbound call {call.id} for Torkin website lead {lead.id}")
+            else:
+                logger.warning(f"No outbound calling agent found for lead {lead.id}")
+
+    except Exception as e:
+        logger.error(f"Failed to trigger outbound call for lead {lead.id}: {str(e)}")
+        # Don't fail the lead creation if outbound calling fails
+
     try:
         return LeadResponseSchema.from_orm(lead)
     except ValidationError as e:

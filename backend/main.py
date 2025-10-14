@@ -20,6 +20,7 @@ from api.prompt_templates import router as prompt_templates_router
 from api.knowledge_base import router as knowledge_base_router
 from api.webhooks import router as webhooks_router
 from api.follow_up_testing import router as follow_up_testing_router
+from api.calls import router as calls_router
 
 # Load environment variables
 load_dotenv()
@@ -58,6 +59,7 @@ app.include_router(prompt_templates_router)
 app.include_router(knowledge_base_router)
 app.include_router(webhooks_router)
 app.include_router(follow_up_testing_router)
+app.include_router(calls_router)
 
 
 @app.get("/")

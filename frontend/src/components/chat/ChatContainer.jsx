@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { MessageList } from './MessageList'
-import { MessageInput } from './MessageInput'
+import { MessageInputWithQuickReplies } from './MessageInput'
 import { ChatHeader } from './ChatHeader'
 import { useChat } from '../../hooks/useChat'
 import { chatAPI } from '../../services/chatAPI'
@@ -9,7 +9,7 @@ import { AlertCircle, WifiOff } from 'lucide-react'
 /**
  * Main chat container component that combines all chat functionality
  * @param {Object} props
- * @param {string} props.leadExternalId - External ID of the lead
+ * @param {number} props.leadId - Internal ID of the lead
  * @param {Object} props.leadInfo - Lead information object
  * @param {Object} props.sessionInfo - Session information object
  * @param {boolean} props.businessOwnerMode - Whether business owner is active in chat
@@ -21,7 +21,7 @@ import { AlertCircle, WifiOff } from 'lucide-react'
  * @param {boolean} props.compact - Compact mode for smaller displays
  */
 export function ChatContainer({
-  leadExternalId,
+  leadId,
   leadInfo,
   sessionInfo,
   businessOwnerMode = false,
@@ -50,7 +50,7 @@ export function ChatContainer({
     refreshMessages,
     conversationInfo,
     sessionInfo: hookSessionInfo
-  } = useChat(leadExternalId, {
+  } = useChat(leadId, {
     pollInterval: 5000,
     autoScroll: true
   })
@@ -260,7 +260,7 @@ export function ChatContainer({
       </div>
 
       {/* Message Input */}
-      <MessageInput
+      <MessageInputWithQuickReplies
         value={newMessage}
         onChange={(e) => setNewMessage(e.target.value)}
         onSendMessage={handleSendMessage}
@@ -291,7 +291,7 @@ export function ChatContainerWithErrorBoundary(props) {
   useEffect(() => {
     setHasError(false)
     setErrorInfo(null)
-  }, [props.leadExternalId])
+  }, [props.leadId])
 
   if (hasError) {
     return (

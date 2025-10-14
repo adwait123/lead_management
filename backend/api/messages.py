@@ -543,6 +543,85 @@ async def get_session_status(session_id: int, db: Session = Depends(get_db)):
         logger.error(f"Error getting session status {session_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get session status")
 
+@router.get("/lead/{lead_id}/messages")
+async def get_lead_conversation_messages(
+    lead_id: int,
+    limit: int = 50,
+    since_timestamp: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Get complete conversation history (both agent and lead messages) for a lead using internal lead_id
+
+    This is the preferred endpoint for internal use as it works with any lead regardless of source.
+
+    Args:
+        lead_id: Internal ID of the lead
+        limit: Maximum number of messages to return (default: 50)
+        since_timestamp: ISO timestamp to get messages after this time
+    """
+    try:
+        # Find lead by internal ID
+        lead = db.query(Lead).filter(Lead.id == lead_id).first()
+        if not lead:
+            raise HTTPException(status_code=404, detail=f"Lead not found: {lead_id}")
+
+        from models.message import Message
+        from datetime import datetime
+
+        # Build query for all messages (agent and lead)
+        query = db.query(Message).filter(
+            Message.lead_id == lead.id
+        )
+
+        # Filter by timestamp if provided
+        if since_timestamp:
+            try:
+                since_dt = datetime.fromisoformat(since_timestamp.replace('Z', '+00:00'))
+                query = query.filter(Message.created_at > since_dt)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid timestamp format")
+
+        # Get messages ordered by creation time
+        messages = query.order_by(Message.created_at.asc()).limit(limit).all()
+
+        # Format response
+        formatted_messages = []
+        for message in messages:
+            formatted_messages.append({
+                "id": message.id,
+                "content": message.content,
+                "sender_type": message.sender_type,
+                "sender_name": message.sender_name,
+                "created_at": message.created_at.isoformat() if message.created_at else None,
+                "message_type": message.message_type,
+                "external_conversation_id": message.external_conversation_id,
+                "delivery_status": message.delivery_status,
+                "message_status": message.message_status,
+                "error_message": message.error_message,
+                "message_metadata": message.message_metadata or {},
+                "model_used": message.model_used,
+                "response_time_ms": message.response_time_ms,
+                "quality_score": message.quality_score,
+                "external_platform": message.external_platform
+            })
+
+        return {
+            "success": True,
+            "lead_id": lead.id,
+            "lead_external_id": lead.external_id,  # Include for compatibility
+            "messages": formatted_messages,
+            "total_messages": len(formatted_messages),
+            "retrieved_at": datetime.utcnow().isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting conversation for lead {lead_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get conversation: {str(e)}")
+
+
 @router.get("/conversation/{lead_external_id}")
 async def get_conversation_messages(
     lead_external_id: str,
@@ -551,7 +630,10 @@ async def get_conversation_messages(
     db: Session = Depends(get_db)
 ):
     """
-    Get complete conversation history (both agent and lead messages) for a lead
+    Get complete conversation history (both agent and lead messages) for a lead using external_id
+
+    DEPRECATED: Use /lead/{lead_id}/messages for better performance and consistency.
+    This endpoint is maintained for backward compatibility with external integrations.
 
     Args:
         lead_external_id: External ID of the lead (e.g., Yelp lead ID)

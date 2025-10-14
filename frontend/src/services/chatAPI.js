@@ -16,13 +16,25 @@ export const chatAPI = {
 
   /**
    * Get conversation history for a specific lead
+   * @param {number} leadId - Internal ID of the lead
+   * @param {Object} params - Query parameters
+   * @param {string} params.since_timestamp - ISO timestamp to get messages after this time
+   * @param {number} params.limit - Maximum number of messages to return (default: 50)
+   * @returns {Promise} Response with messages array (both agent and lead messages)
+   */
+  getConversationHistory: (leadId, params = {}) =>
+    api.get(`/api/messages/lead/${leadId}/messages`, { params }),
+
+  /**
+   * Get conversation history for a specific lead using external ID (deprecated)
+   * @deprecated Use getConversationHistory with leadId for better performance
    * @param {string} leadExternalId - External ID of the lead (e.g., Yelp lead ID)
    * @param {Object} params - Query parameters
    * @param {string} params.since_timestamp - ISO timestamp to get messages after this time
    * @param {number} params.limit - Maximum number of messages to return (default: 50)
    * @returns {Promise} Response with messages array (both agent and lead messages)
    */
-  getConversationHistory: (leadExternalId, params = {}) =>
+  getConversationHistoryByExternalId: (leadExternalId, params = {}) =>
     api.get(`/api/messages/conversation/${leadExternalId}`, { params }),
 
   /**

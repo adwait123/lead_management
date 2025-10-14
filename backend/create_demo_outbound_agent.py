@@ -64,13 +64,14 @@ def create_demo_outbound_agent():
             temperature="0.3",
             max_tokens=150,
 
-            # Workflow settings
+            # Workflow settings (matches WorkflowService expectations)
             triggers=[
                 {
-                    "type": "lead_created",
-                    "conditions": {
+                    "event": "new_lead",
+                    "condition": {
                         "source": "torkin website"
-                    }
+                    },
+                    "active": True
                 }
             ],
 

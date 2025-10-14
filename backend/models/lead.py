@@ -3,6 +3,7 @@ Lead model definition
 """
 from sqlalchemy import Column, Integer, String, DateTime, Text, JSON
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from .database import Base
 
 class Lead(Base):
@@ -37,6 +38,9 @@ class Lead(Base):
 
     interaction_history = Column(JSON, nullable=True, default=list)
     # Array of interaction objects: [{"id": 1, "type": "email", "content": "...", "timestamp": "...", "agent_id": 1}]
+
+    # Relationships
+    calls = relationship("Call", back_populates="lead")
 
     def __repr__(self):
         return f"<Lead(id={self.id}, name='{self.name}', email='{self.email}', status='{self.status}')>"

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Torkin - Free Consultation</title>
+    <link rel="stylesheet" href="torkin_demo.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">Torkin</div>
+            <ul>
+                <li><a href="#">Residential</a></li>
+                <li><a href="#">Business</a></li>
+                <li><a href="#">Our Services</a></li>
+                <li><a href="#">Pest Library</a></li>
+                <li><a href="#">Promotions</a></li>
+                <li><a href="#">About Us</a></li>
+            </ul>
+            <div class="header-buttons">
+                <a href="#" class="login-btn">LOG IN</a>
+                <a href="#" class="phone-btn">1-800-123-4567</a>
+            </div>
+        </nav>
+        <div class="hero-image">
+            <img src="https://images.ctfassets.net/7bnun0x6hsse/23dXaX1Odh7Trq737anVYx/0f31cd609b4fdd0ba9f0416a219311c2/Orkin_Tchnician_Homeowner_Review_PlanOptions.jpg?w=1440&h=758&fit=crop&q=60&fm=jpg" alt="Technician with homeowner">
+        </div>
+    </header>
+    <div class="form-container">
+        <h2>Schedule Your FREE In-Home Consultation</h2>
+        <p>A Torkin design expert will call you within minutes to confirm your appointment</p>
+        <form id="consultation-form">
+            <input type="text" id="full-name" name="full-name" placeholder="Full Name" required>
+            <input type="tel" id="phone" name="phone" placeholder="Phone Number" required>
+            <input type="email" id="email" name="email" placeholder="Email Address" required>
+            <input type="text" id="address" name="address" placeholder="Street Address" required>
+            <select id="service-interest" name="service-interest" required>
+                <option value="">Service Interest</option>
+                <option value="Kitchen Remodeling">Kitchen Remodeling</option>
+                <option value="Bathroom Renovation">Bathroom Renovation</option>
+                <option value="Home Addition">Home Addition</option>
+                <option value="Flooring">Flooring</option>
+                <option value="Other">Other</option>
+            </select>
+            <select id="project-timeline" name="project-timeline" required>
+                <option value="">Project Timeline</option>
+                <option value="ASAP">ASAP</option>
+                <option value="Within 1 Month">Within 1 Month</option>
+                <option value="1-3 Months">1-3 Months</option>
+                <option value="3-6 Months">3-6 Months</option>
+                <option value="Just Exploring">Just Exploring</option>
+            </select>
+            <button type="submit">Schedule Now</button>
+        </form>
+        <p class="form-footer">No obligation • Professional consultation • Hundreds of design samples</p>
+    </div>
+    <script src="torkin_demo.js"></script>
+</body>
+</html>

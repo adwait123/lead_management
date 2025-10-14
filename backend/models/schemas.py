@@ -413,3 +413,51 @@ class AgentSessionListResponseSchema(BaseModel):
 
 class MessageStatsUpdateSchema(BaseModel):
     from_agent: bool = True
+
+# Call schemas
+class CallBaseSchema(BaseModel):
+    lead_id: int
+    agent_id: int
+    phone_number: str
+    call_status: str = "pending"
+
+class CallCreateSchema(CallBaseSchema):
+    call_metadata: Optional[Dict[str, Any]] = {}
+
+class CallUpdateSchema(BaseModel):
+    call_status: Optional[str] = None
+    transcript: Optional[str] = None
+    call_summary: Optional[str] = None
+    call_duration: Optional[int] = None
+    call_metadata: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+
+class CallResponseSchema(CallBaseSchema):
+    id: int
+    room_name: Optional[str] = None
+    call_duration: Optional[int] = None
+    transcript: Optional[str] = None
+    call_summary: Optional[str] = None
+    call_metadata: Dict[str, Any] = {}
+    error_message: Optional[str] = None
+    retry_count: int = 0
+    initiated_at: datetime
+    answered_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
+class CallListResponseSchema(BaseModel):
+    calls: List[CallResponseSchema]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+
+class CallTriggerSchema(BaseModel):
+    """Schema for triggering outbound calls"""
+    agent_id: Optional[int] = None  # If not provided, will use first available outbound agent
+    force_call: bool = False  # Override normal trigger conditions

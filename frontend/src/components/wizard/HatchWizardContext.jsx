@@ -14,7 +14,25 @@ export const useHatchWizard = () => {
 export const HatchWizardProvider = ({ children }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [configStep, setConfigStep] = useState(1);
-  const [wizardData, setWizardData] = useState({
+
+  // Load wizard data from localStorage if available
+  const loadWizardDataFromStorage = () => {
+    try {
+      const storedWizardData = localStorage.getItem('wizardData');
+      if (storedWizardData) {
+        const parsedData = JSON.parse(storedWizardData);
+        console.log('🔄 Loading wizard data from localStorage:', parsedData);
+        return parsedData;
+      }
+    } catch (error) {
+      console.error('❌ Error loading wizard data from localStorage:', error);
+    }
+    return null;
+  };
+
+  const [wizardData, setWizardData] = useState(() => {
+    const storedData = loadWizardDataFromStorage();
+    return storedData || {
     // Step 1: Agent Type
     agentType: null, // 'inbound', 'outbound', 'custom'
 
@@ -153,6 +171,7 @@ export const HatchWizardProvider = ({ children }) => {
         testStatus: 'not_tested'
       }
     }
+    };
   });
 
   const [isLoading, setIsLoading] = useState(false);

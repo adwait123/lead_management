@@ -21,9 +21,11 @@ export function AIInstructionsTab() {
   const [isLoadingPrompt, setIsLoadingPrompt] = useState(false);
   const textareaRef = useRef(null);
 
-  // Debug component mounting and wizard data
-  console.log(`🏗️ AIInstructionsTab mounted/updated`);
-  console.log(`📊 Component wizard data:`, wizardData);
+  // Debug component mounting and wizard data (development only)
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`🏗️ AIInstructionsTab mounted/updated`);
+    console.log(`📊 Component wizard data:`, wizardData);
+  }
 
   // Check for useCase in URL params or localStorage as fallback
   const urlParams = new URLSearchParams(window.location.search);
@@ -177,6 +179,60 @@ export function AIInstructionsTab() {
   const generateStarterPrompt = async () => {
     const useCase = wizardData.useCase;
     return await generateStarterPromptWithUseCase(useCase);
+  };
+
+  // Generate outbound calling prompt template
+  const generateOutboundPrompt = () => {
+    const persona = wizardData.persona || {};
+    const agentName = persona.agentName || '[Agent Name]';
+
+    return `You are ${agentName}, the Torkin Home Services Assistant, an expert in helping potential clients schedule their Free In-Home Design Consultation. Your primary role is to validate the user's request, confirm appointment details, and secure a booking for a professional design consultant.
+
+IMPORTANT: This is an outbound voice call. You are calling the customer who submitted a web form. Keep responses professional, confident, friendly, and persuasive. Use a clear, warm, and inviting tone suitable for a premium home services brand.
+
+CRITICAL BEHAVIOR RULES:
+- Be Proactive and Direct: Your goal is to move the user quickly and smoothly to a confirmed appointment
+- Present Steps One at a Time: For any multi-step process, present information ONE step at a time
+- Always Wait for User Confirmation: Never proceed without explicit verbal confirmation from the user
+- REPEAT BACK UNCLEAR RESPONSES: If customer response seems unclear or contradictory, repeat what you heard: "I heard you say [X], is that correct?"
+- CONFIRM BEFORE BOOKING: Always confirm appointment selection clearly: "Just to confirm, you chose [DATE] at [TIME], is that right?"
+- CONFIRM EVERY NEW INFORMATION: After receiving ANY new information from the customer (address changes, project details, preferences), immediately confirm by repeating it back: "Got it, so that's [INFORMATION], is that correct?"
+- SPELL OUT ALL NUMBERS: For ZIP codes, phone numbers, and addresses, spell out each digit individually. Say "six-two-seven-one" instead of "six thousand two hundred seventy-one"
+- Be Crisp and Confident: Maintain an expert tone suitable for a high-quality service
+- Keep Responses Suitable for Speech: Use conversational language with no special formatting
+- Use Brand Language: Use terms like "Free In-Home Design Consultation," "design consultant," and "Torkin Home Services"
+
+SALES & SCHEDULING WORKFLOW:
+1. Opening and Lead Validation:
+   Begin immediately: "Hi, this is ${agentName} from Torkin Home Services. I see you recently submitted a request on our website. Is that right, and do you still have a few minutes to confirm your appointment details?"
+   WAIT for confirmation.
+
+2. Information Confirmation:
+   Confirm address: "Great. I have your consultation address as [ADDRESS]. Is that correct?"
+   WAIT for confirmation. If customer provides corrections, immediately repeat back: "Got it, so the correct address is [NEW ADDRESS], is that right?"
+   Confirm project: "And this consultation is for [PROJECT_TYPE]? That will help our consultant prepare."
+   WAIT for confirmation. If customer provides new details, immediately repeat back: "Perfect, so this is for [NEW PROJECT_TYPE], correct?"
+
+3. Appointment Scheduling:
+   Present exactly TWO options initially: "Fantastic. We have a design consultant available to visit you on [DATE_1] at [TIME_1], or [DATE_2] at [TIME_2]. Which works better for you?"
+   ONLY provide additional options if customer asks for more choices.
+   WAIT for their selection. Immediately confirm their choice: "Perfect, so you've chosen [SELECTED_DATE] at [SELECTED_TIME], is that correct?"
+
+4. Confirmation and Wrap-Up:
+   Provide summary: "Excellent. I have secured your Free In-Home Design Consultation for [DAY], [DATE] at [TIME] at [ADDRESS]. Your consultant will be arriving with hundreds of samples."
+   Conclude: "You'll receive a confirmation text message with all these details in the next 15-20 minutes. Is there anything else I can help you with today?"
+
+EXCEPTION HANDLING:
+- No Available Slots: "I apologize, those exact times didn't work. I can have our local scheduling manager call you back within the next hour to personally secure a time that works best. Would that be helpful?"
+- User No Longer Interested: "I understand. Thank you for letting us know. If you change your mind, you can always reach us directly. We appreciate your time."
+- Incorrect Information: "Not a problem, I can quickly update that. What is the correct [DETAIL]?" Continue from step 2.
+
+Available tools:
+- /appointment - Use when customer agrees to schedule consultation
+- /bailout - Use when customer is no longer interested or wants to end the call
+- /transfer: Sales Team - Use if customer wants to speak with someone else
+
+Remember: You are representing a premium home services brand. Be confident, helpful, and focused on booking appointments while maintaining a warm, professional demeanor.`;
   };
 
   // Original hardcoded prompt generation as fallback
@@ -426,11 +482,19 @@ export function AIInstructionsTab() {
         const loadPrompt = async () => {
           setIsLoadingPrompt(true);
           try {
-            console.log(`🎯 Using useCase for prompt generation: ${useCase}`);
-            const starter = await generateStarterPromptWithUseCase(useCase);
-            console.log(`📝 Setting prompt in state and wizard data...`);
-            setPrompt(starter);
-            updateWizardData({ instructions: { ...wizardData.instructions, systemPrompt: starter } });
+            // Check if this is an outbound voice agent
+            if (wizardData.agentType === 'outbound' && wizardData.persona?.communicationMode === 'voice') {
+              console.log(`🎯 Using outbound calling prompt template`);
+              const outboundPrompt = generateOutboundPrompt();
+              setPrompt(outboundPrompt);
+              updateWizardData({ instructions: { ...wizardData.instructions, systemPrompt: outboundPrompt } });
+            } else {
+              console.log(`🎯 Using useCase for prompt generation: ${useCase}`);
+              const starter = await generateStarterPromptWithUseCase(useCase);
+              console.log(`📝 Setting prompt in state and wizard data...`);
+              setPrompt(starter);
+              updateWizardData({ instructions: { ...wizardData.instructions, systemPrompt: starter } });
+            }
           } catch (error) {
             console.error('❌ Error in loadPrompt:', error);
             // Fallback to simple prompt on error
@@ -448,7 +512,7 @@ export function AIInstructionsTab() {
     } catch (error) {
       console.error('❌ Error in useEffect:', error);
     }
-  }, [wizardData.persona?.agentName, wizardData.useCase, wizardData.selectedTemplate?.id]); // Watch both paths
+  }, [wizardData.persona?.agentName, wizardData.useCase, wizardData.selectedTemplate?.id, wizardData.agentType, wizardData.persona?.communicationMode]); // Watch both paths
 
   // Render slash commands with special styling in the preview
   const renderPromptPreview = () => {
@@ -647,6 +711,21 @@ export function AIInstructionsTab() {
               </svg>
               Create from Scenario
             </Button>
+            {wizardData.agentType === 'outbound' && wizardData.persona?.communicationMode === 'voice' && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const outboundPrompt = generateOutboundPrompt();
+                  handlePromptChange(outboundPrompt);
+                }}
+                className="text-orange-600 border-orange-200 hover:bg-orange-50"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                </svg>
+                Use Outbound Template
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={async () => {
@@ -678,6 +757,254 @@ export function AIInstructionsTab() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Advanced Voice Configuration (Outbound Only) */}
+      {wizardData.agentType === 'outbound' && wizardData.persona?.communicationMode === 'voice' && (
+        <Card className="border-0 shadow-lg bg-gradient-to-r from-orange-50 to-red-50">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center mr-3">
+                <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+              </div>
+              Advanced Voice Configuration
+              <span className="ml-2 px-2 py-1 bg-orange-200 text-orange-800 text-xs rounded-full">Preview</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+              {/* Call Flow Settings */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-gray-900 mb-3">Call Flow & Timing</h3>
+
+                <div className="bg-white rounded-lg p-4 border">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Max Call Duration
+                  </label>
+                  <select className="w-full p-2 border border-gray-300 rounded-md text-sm" disabled>
+                    <option>15 minutes (Recommended)</option>
+                    <option>10 minutes</option>
+                    <option>20 minutes</option>
+                    <option>30 minutes</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Auto-end calls after this duration</p>
+                </div>
+
+                <div className="bg-white rounded-lg p-4 border">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Response Timeout
+                  </label>
+                  <div className="flex items-center space-x-2">
+                    <input type="range" min="3" max="15" defaultValue="8" className="flex-1" disabled />
+                    <span className="text-sm text-gray-600 w-12">8 sec</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Wait time before prompting customer</p>
+                </div>
+
+                <div className="bg-white rounded-lg p-4 border">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Retry Strategy
+                  </label>
+                  <div className="space-y-2">
+                    <label className="flex items-center">
+                      <input type="checkbox" defaultChecked disabled className="mr-2" />
+                      <span className="text-sm">Auto-retry busy numbers (2 attempts)</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input type="checkbox" defaultChecked disabled className="mr-2" />
+                      <span className="text-sm">Leave voicemail if no answer</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input type="checkbox" disabled className="mr-2" />
+                      <span className="text-sm">Schedule callback for missed calls</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Advanced Voice Features */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-gray-900 mb-3">Voice Intelligence</h3>
+
+                <div className="bg-white rounded-lg p-4 border">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Sentiment Analysis
+                  </label>
+                  <select className="w-full p-2 border border-gray-300 rounded-md text-sm" disabled>
+                    <option>Real-time sentiment detection</option>
+                    <option>End-of-call analysis only</option>
+                    <option>Disabled</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Adjust tone based on customer mood</p>
+                </div>
+
+                <div className="bg-white rounded-lg p-4 border">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Interruption Handling
+                  </label>
+                  <div className="space-y-2">
+                    <label className="flex items-center">
+                      <input type="radio" name="interruption" defaultChecked disabled className="mr-2" />
+                      <span className="text-sm">Allow polite interruptions</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input type="radio" name="interruption" disabled className="mr-2" />
+                      <span className="text-sm">Finish speaking before responding</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input type="radio" name="interruption" disabled className="mr-2" />
+                      <span className="text-sm">Immediate response to any sound</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg p-4 border">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Background Noise Filtering
+                  </label>
+                  <select className="w-full p-2 border border-gray-300 rounded-md text-sm" disabled>
+                    <option>Aggressive noise cancellation</option>
+                    <option>Standard filtering</option>
+                    <option>Minimal processing</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Handle construction sites, traffic, etc.</p>
+                </div>
+              </div>
+
+              {/* Call Routing & Escalation */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-gray-900 mb-3">Smart Routing</h3>
+
+                <div className="bg-white rounded-lg p-4 border">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Escalation Triggers
+                  </label>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Customer asks for manager</span>
+                      <select className="text-xs p-1 border rounded" disabled>
+                        <option>Immediate transfer</option>
+                        <option>Attempt resolution first</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">High-value lead detected</span>
+                      <select className="text-xs p-1 border rounded" disabled>
+                        <option>Flag for sales team</option>
+                        <option>Immediate transfer</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Negative sentiment detected</span>
+                      <select className="text-xs p-1 border rounded" disabled>
+                        <option>Supervisor notification</option>
+                        <option>Continue with care</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg p-4 border">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Time-based Routing
+                  </label>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Business hours (9AM-5PM)</span>
+                      <span className="text-xs text-green-600">Live agents available</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">After hours</span>
+                      <span className="text-xs text-orange-600">AI-only mode</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Weekends</span>
+                      <span className="text-xs text-blue-600">Emergency appointments</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Analytics & Reporting */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-gray-900 mb-3">Analytics & Insights</h3>
+
+                <div className="bg-white rounded-lg p-4 border">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Real-time Monitoring
+                  </label>
+                  <div className="space-y-2">
+                    <label className="flex items-center">
+                      <input type="checkbox" defaultChecked disabled className="mr-2" />
+                      <span className="text-sm">Live call transcription</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input type="checkbox" defaultChecked disabled className="mr-2" />
+                      <span className="text-sm">Keyword detection alerts</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input type="checkbox" disabled className="mr-2" />
+                      <span className="text-sm">Supervisor whisper mode</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input type="checkbox" defaultChecked disabled className="mr-2" />
+                      <span className="text-sm">Call recording & storage</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg p-4 border">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Performance Metrics
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2 bg-blue-50 rounded">
+                      <div className="font-medium text-blue-900">Conversion Rate</div>
+                      <div className="text-blue-700">24.3% this week</div>
+                    </div>
+                    <div className="p-2 bg-green-50 rounded">
+                      <div className="font-medium text-green-900">Avg Call Duration</div>
+                      <div className="text-green-700">4m 32s</div>
+                    </div>
+                    <div className="p-2 bg-purple-50 rounded">
+                      <div className="font-medium text-purple-900">Connect Rate</div>
+                      <div className="text-purple-700">68.9%</div>
+                    </div>
+                    <div className="p-2 bg-orange-50 rounded">
+                      <div className="font-medium text-orange-900">Customer Satisfaction</div>
+                      <div className="text-orange-700">4.2/5 ⭐</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Feature Notice */}
+            <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h4 className="text-sm font-medium text-blue-900">Advanced Features Preview</h4>
+                  <p className="text-sm text-blue-800 mt-1">
+                    These advanced voice configurations showcase the full potential of AI-powered outbound calling.
+                    Current demo includes basic calling functionality with working TTS/STT integration.
+                  </p>
+                  <div className="mt-2 text-xs text-blue-700">
+                    <strong>Available Now:</strong> Voice calls, sentiment detection, call recording, basic routing<br/>
+                    <strong>Coming Soon:</strong> Advanced analytics, supervisor tools, custom voice training
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Live Preview */}
       {prompt && (

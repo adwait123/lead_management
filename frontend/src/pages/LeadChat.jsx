@@ -180,38 +180,23 @@ export function LeadChat() {
       <div className="flex-1 flex overflow-hidden">
         {/* Chat Interface */}
         <div className={`${showLeadDetails ? 'flex-1' : 'w-full'} flex flex-col h-full transition-all duration-300`}>
-          {lead.external_id ? (
-            <ChatContainer
-              leadExternalId={lead.external_id}
-              leadInfo={lead}
-              sessionInfo={session}
-              businessOwnerMode={businessOwnerMode}
-              onTakeOver={handleTakeOver}
-              onReleaseControl={handleReleaseControl}
-              onLeadClick={handleLeadClick}
-              onAgentClick={handleAgentClick}
-              quickReplies={[
-                "Thanks for your interest!",
-                "Can you provide more details?",
-                "I'll get back to you within 24 hours.",
-                "Let me transfer you to a specialist.",
-                "Would you like to schedule a consultation?"
-              ]}
-            />
-          ) : (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  No External ID Found
-                </h3>
-                <p className="text-gray-500">
-                  This lead doesn't have an external ID required for chat functionality.
-                  This usually means the lead wasn't created through a supported integration.
-                </p>
-              </div>
-            </div>
-          )}
+          <ChatContainer
+            leadId={lead.id}
+            leadInfo={lead}
+            sessionInfo={session}
+            businessOwnerMode={businessOwnerMode}
+            onTakeOver={handleTakeOver}
+            onReleaseControl={handleReleaseControl}
+            onLeadClick={handleLeadClick}
+            onAgentClick={handleAgentClick}
+            quickReplies={[
+              "Thanks for your interest!",
+              "Can you provide more details?",
+              "I'll get back to you within 24 hours.",
+              "Let me transfer you to a specialist.",
+              "Would you like to schedule a consultation?"
+            ]}
+          />
         </div>
 
         {/* Lead Details Sidebar */}

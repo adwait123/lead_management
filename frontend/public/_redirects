@@ -1,3 +1,9 @@
-/*    /index.html   200
+# Serve frontend_demo files directly (static assets)
+/frontend_demo/*    /frontend_demo/:splat    200
+
+# React router routes
 /agents    /index.html   200
 /agents/*    /index.html   200
+
+# Catch-all for React Router (must be last)
+/*    /index.html   200

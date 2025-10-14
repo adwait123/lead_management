@@ -3,13 +3,13 @@ import { chatAPI, chatUtils } from '../services/chatAPI'
 
 /**
  * Custom hook for managing individual chat conversations
- * @param {string} leadExternalId - External ID of the lead
+ * @param {number} leadId - Internal ID of the lead
  * @param {Object} options - Configuration options
  * @param {number} options.pollInterval - Polling interval in milliseconds (default: 5000)
  * @param {boolean} options.autoScroll - Auto scroll to bottom on new messages (default: true)
  * @returns {Object} Chat state and functions
  */
-export function useChat(leadExternalId, options = {}) {
+export function useChat(leadId, options = {}) {
   const {
     pollInterval = 5000, // Poll every 5 seconds
     autoScroll = true
@@ -42,13 +42,13 @@ export function useChat(leadExternalId, options = {}) {
    * Load conversation history
    */
   const loadMessages = useCallback(async (since = null) => {
-    if (!leadExternalId) return
+    if (!leadId) return
 
     try {
       const params = {}
       if (since) params.since_timestamp = since
 
-      const response = await chatAPI.getConversationHistory(leadExternalId, params)
+      const response = await chatAPI.getConversationHistory(leadId, params)
 
       if (response.data.success) {
         const newMessages = response.data.messages || []
@@ -84,7 +84,7 @@ export function useChat(leadExternalId, options = {}) {
     } finally {
       setLoading(false)
     }
-  }, [leadExternalId, conversationInfo])
+  }, [leadId, conversationInfo])
 
   /**
    * Fetch session information for takeover functionality
@@ -172,8 +172,8 @@ export function useChat(leadExternalId, options = {}) {
 
     try {
       const messageData = {
-        yelp_lead_id: leadExternalId,
-        conversation_id: `conv_${leadExternalId}`,
+        yelp_lead_id: conversationInfo.leadExternalId || `lead_${leadId}`,
+        conversation_id: `conv_${leadId}`,
         message_content: content.trim(),
         sender: 'customer',
         timestamp: new Date().toISOString()
@@ -194,7 +194,7 @@ export function useChat(leadExternalId, options = {}) {
       setError('Failed to simulate lead message')
       return false
     }
-  }, [leadExternalId, conversationInfo, pollForNewMessages])
+  }, [leadId, conversationInfo, pollForNewMessages])
 
   /**
    * Start polling for new messages
@@ -225,24 +225,24 @@ export function useChat(leadExternalId, options = {}) {
 
   // Effects
   useEffect(() => {
-    if (leadExternalId) {
+    if (leadId) {
       loadMessages()
     }
-  }, [leadExternalId, loadMessages])
+  }, [leadId, loadMessages])
 
   useEffect(() => {
     scrollToBottom()
   }, [messages, scrollToBottom])
 
   useEffect(() => {
-    if (!loading && leadExternalId) {
+    if (!loading && leadId) {
       startPolling()
     }
 
     return () => {
       stopPolling()
     }
-  }, [loading, leadExternalId, startPolling, stopPolling])
+  }, [loading, leadId, startPolling, stopPolling])
 
   // Cleanup on unmount
   useEffect(() => {
