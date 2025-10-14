@@ -146,6 +146,7 @@ export function Leads() {
                 className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="">All Sources</option>
+                <option value="torkin">Torkin</option>
                 <option value="Facebook Ads">Facebook Ads</option>
                 <option value="Google Ads">Google Ads</option>
                 <option value="Website">Website</option>
@@ -196,7 +197,7 @@ export function Leads() {
                       <tr key={lead.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-3 px-4">
                           <div>
-                            <div className="font-medium text-gray-900">{lead.name}</div>
+                            <div className="font-medium text-gray-900">{lead.name || `${lead.first_name} ${lead.last_name}`}</div>
                             <div className="text-sm text-gray-500">{lead.email}</div>
                           </div>
                         </td>
@@ -285,7 +286,7 @@ export function Leads() {
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">{selectedLead.name}</h2>
+                  <h2 className="text-xl font-bold text-gray-900">{selectedLead.name || `${selectedLead.first_name} ${selectedLead.last_name}`}</h2>
                   <p className="text-gray-500">{selectedLead.company}</p>
                 </div>
                 <Button
