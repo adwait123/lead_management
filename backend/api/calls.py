@@ -214,7 +214,7 @@ async def trigger_outbound_call(
     db.refresh(call)
 
     # Schedule the actual call dispatch as background task
-    background_tasks.add_task(dispatch_outbound_call, call.id, db)
+    background_tasks.add_task(dispatch_outbound_call, call.id)
 
     return {
         "success": True,
@@ -289,8 +289,12 @@ async def get_call_stats(db: Session = Depends(get_db)):
     }
 
 
-async def dispatch_outbound_call(call_id: int, db: Session):
+async def dispatch_outbound_call(call_id: int):
     """Background task to dispatch the actual outbound call"""
+    # Create a new database session for this background task
+    from models.database import SessionLocal
+    db = SessionLocal()
+
     try:
         # Import here to avoid circular imports
         from services.outbound_call_service import OutboundCallService
@@ -313,3 +317,6 @@ async def dispatch_outbound_call(call_id: int, db: Session):
             call.error_message = str(e)
             call.ended_at = datetime.utcnow()
             db.commit()
+    finally:
+        # Always close the database session
+        db.close()

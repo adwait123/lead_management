@@ -302,10 +302,12 @@ class WorkflowService:
         try:
             # Import here to avoid circular imports
             from services.agent_service import AgentService
+            from models.database import SessionLocal
             import asyncio
 
             # Create agent service with a new DB session to avoid conflicts
-            agent_service = AgentService(self.db)
+            new_db = SessionLocal()
+            agent_service = AgentService(new_db)
 
             # Extract project details from event data for context
             project_details = event_data.get('form_data', {})
@@ -327,7 +329,7 @@ class WorkflowService:
             # Note: We run this in a background task to avoid blocking the webhook response
             asyncio.create_task(
                 self._generate_initial_message_async(
-                    agent_service, session_id, lead_data, project_details
+                    agent_service, new_db, session_id, lead_data, project_details
                 )
             )
 
@@ -339,6 +341,7 @@ class WorkflowService:
     async def _generate_initial_message_async(
         self,
         agent_service: 'AgentService',
+        db_session: Session,
         session_id: int,
         lead_data: Dict[str, Any],
         project_details: Dict[str, Any]
@@ -361,6 +364,13 @@ class WorkflowService:
 
         except Exception as e:
             logger.error(f"Error in async initial message generation for session {session_id}: {str(e)}")
+        finally:
+            # Always close the database session to prevent leaks
+            try:
+                db_session.close()
+                logger.debug(f"Closed database session for initial message generation {session_id}")
+            except Exception as e:
+                logger.error(f"Error closing database session: {str(e)}")
 
 
     def _setup_follow_up_sequences(self, session: AgentSession, agent: Agent):
