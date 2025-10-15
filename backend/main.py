@@ -7,9 +7,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
+import asyncio
+import logging
 
 # Import models and database
-from models.database import create_tables
+from models.database import create_tables, SessionLocal
 from api.leads import router as leads_router
 from api.agents import router as agents_router
 from api.agent_sessions import router as agent_sessions_router
@@ -47,6 +49,32 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     create_tables()
+
+    # Start background follow-up processor
+    logger = logging.getLogger(__name__)
+    logger.info("Starting background follow-up task processor...")
+
+    try:
+        from services.follow_up_scheduler import FollowUpScheduler
+
+        # Create a background task for the follow-up processor
+        async def run_follow_up_processor():
+            """Background task to process follow-up tasks"""
+            db = SessionLocal()
+            try:
+                scheduler = FollowUpScheduler(db)
+                await scheduler.start_background_processor(check_interval_seconds=60)
+            except Exception as e:
+                logger.error(f"Error in follow-up processor: {str(e)}")
+            finally:
+                db.close()
+
+        # Start the background processor as a fire-and-forget task
+        asyncio.create_task(run_follow_up_processor())
+        logger.info("Background follow-up processor started successfully")
+
+    except Exception as e:
+        logger.error(f"Failed to start background follow-up processor: {str(e)}")
 
 # Include API routers
 app.include_router(leads_router)
