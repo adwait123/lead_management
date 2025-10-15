@@ -33,11 +33,14 @@ class WorkflowService:
         """
         logger.info(f"Processing event: {event_type} with data: {event_data}")
 
+        # Extract lead source from event data
+        lead_source = event_data.get('source')
+
         # Find agents with matching triggers
-        matching_agents = self._find_matching_agents(event_type)
+        matching_agents = self._find_matching_agents(event_type, lead_source)
 
         if not matching_agents:
-            logger.info(f"No agents found with trigger for event type: {event_type}")
+            logger.info(f"No agents found with trigger for event type: {event_type} and lead source: {lead_source}")
             return []
 
         created_sessions = []
@@ -54,8 +57,8 @@ class WorkflowService:
 
         return created_sessions
 
-    def _find_matching_agents(self, event_type: str) -> List[Agent]:
-        """Find agents that have triggers matching the event type"""
+    def _find_matching_agents(self, event_type: str, lead_source: str = None) -> List[Agent]:
+        """Find agents that have triggers matching the event type and lead source"""
 
         # Get all active agents
         agents = self.db.query(Agent).filter(Agent.is_active == True).all()
@@ -63,7 +66,7 @@ class WorkflowService:
         matching_agents = []
 
         for agent in agents:
-            if self._agent_has_matching_trigger(agent, event_type):
+            if self._agent_has_matching_trigger(agent, event_type, lead_source):
                 matching_agents.append(agent)
 
         # Prioritize agents with workflow steps (follow-up sequences) over those without
@@ -81,8 +84,8 @@ class WorkflowService:
 
         return matching_agents
 
-    def _agent_has_matching_trigger(self, agent: Agent, event_type: str) -> bool:
-        """Check if an agent has a trigger that matches the event type"""
+    def _agent_has_matching_trigger(self, agent: Agent, event_type: str, lead_source: str = None) -> bool:
+        """Check if an agent has a trigger that matches the event type and lead source"""
 
         if not agent.triggers:
             return False
@@ -95,6 +98,19 @@ class WorkflowService:
                 trigger_event = trigger
 
             if trigger_event == event_type:
+                # Check lead source filtering if specified
+                if isinstance(trigger, dict):
+                    allowed_sources = trigger.get('lead_sources') or trigger.get('sources')
+
+                    if allowed_sources and lead_source:
+                        # If agent specifies allowed sources, lead source must match
+                        if isinstance(allowed_sources, list):
+                            if lead_source not in allowed_sources:
+                                continue  # This trigger doesn't match the lead source
+                        elif isinstance(allowed_sources, str):
+                            if lead_source != allowed_sources:
+                                continue  # This trigger doesn't match the lead source
+
                 # Check if trigger has additional conditions
                 if isinstance(trigger, dict) and 'condition' in trigger:
                     # TODO: Implement condition evaluation logic

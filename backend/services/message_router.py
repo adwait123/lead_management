@@ -208,7 +208,13 @@ class MessageRouter:
             }
 
     def _find_agents_for_new_conversation(self, lead_id: int) -> list[Agent]:
-        """Find agents that can handle new conversations"""
+        """Find agents that can handle new conversations for this specific lead"""
+
+        # Get lead information to check source
+        lead = self.db.query(Lead).filter(Lead.id == lead_id).first()
+        if not lead:
+            logger.error(f"Lead {lead_id} not found")
+            return []
 
         # Get all active agents
         agents = self.db.query(Agent).filter(Agent.is_active == True).all()
@@ -217,8 +223,11 @@ class MessageRouter:
 
         for agent in agents:
             # Check if agent has triggers that would handle new conversations
-            if self._agent_can_handle_new_conversation(agent):
+            if self._agent_can_handle_new_conversation(agent, lead.source):
                 suitable_agents.append(agent)
+
+        if not suitable_agents:
+            logger.warning(f"No suitable agents found for lead {lead_id} with source '{lead.source}'")
 
         # Sort by priority (could be enhanced with agent ranking logic)
         # For now, prioritize by use case
@@ -234,24 +243,40 @@ class MessageRouter:
 
         return suitable_agents
 
-    def _agent_can_handle_new_conversation(self, agent: Agent) -> bool:
-        """Check if an agent can handle new conversations based on its triggers"""
+    def _agent_can_handle_new_conversation(self, agent: Agent, lead_source: str = None) -> bool:
+        """Check if an agent can handle new conversations based on its triggers and lead source"""
 
         if not agent.triggers:
             # If no specific triggers, assume it can handle general conversations
             return True
 
         # Check for conversation-related triggers
-        conversation_triggers = {"new_lead", "form_submission", "website_visit", "general"}
+        conversation_triggers = {"new_lead", "form_submission", "website_visit", "general", "message_received"}
 
         for trigger in agent.triggers:
             if isinstance(trigger, dict):
                 trigger_event = trigger.get('event') or trigger.get('type') or trigger.get('event_type')
-            else:
-                trigger_event = trigger
 
-            if trigger_event in conversation_triggers:
-                return True
+                # Check if this trigger matches conversation events
+                if trigger_event in conversation_triggers:
+                    # Check lead source filtering if specified
+                    allowed_sources = trigger.get('lead_sources') or trigger.get('sources')
+
+                    if allowed_sources:
+                        # If agent specifies allowed sources, lead source must match
+                        if isinstance(allowed_sources, list):
+                            return lead_source in allowed_sources
+                        elif isinstance(allowed_sources, str):
+                            return lead_source == allowed_sources
+                    else:
+                        # No source filtering, agent accepts all sources
+                        return True
+            else:
+                # Simple string trigger - check if it's a conversation trigger
+                trigger_event = trigger
+                if trigger_event in conversation_triggers:
+                    # String triggers don't have source filtering, accept all
+                    return True
 
         return False
 
