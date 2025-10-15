@@ -256,16 +256,26 @@ async def get_recent_conversations(
 
         conversations = []
         for session in sessions:
-            # Get agent and lead info
-            agent = db.query(AgentSession.agent).filter(AgentSession.id == session.id).first()
+            # Get lead info
             lead = db.query(Lead).filter(Lead.id == session.lead_id).first()
+
+            # Create lead display name (prioritize name, then combine first_name + last_name)
+            lead_name = "Unknown Lead"
+            if lead:
+                if lead.name and lead.name.strip():
+                    lead_name = lead.name.strip()
+                elif lead.first_name or lead.last_name:
+                    # Combine first and last name, handling empty values
+                    first = lead.first_name.strip() if lead.first_name else ""
+                    last = lead.last_name.strip() if lead.last_name else ""
+                    lead_name = f"{first} {last}".strip() or "Unknown Lead"
 
             conversation = {
                 "session_id": session.id,
                 "lead_id": session.lead_id,
-                "lead_name": lead.name if lead else "Unknown",
+                "lead_name": lead_name,
                 "agent_id": session.agent_id,
-                "agent_name": session.agent.name if session.agent else "Unknown",
+                "agent_name": session.agent.name if session.agent else "Unknown Agent",
                 "session_status": session.session_status,
                 "session_goal": session.session_goal,
                 "message_count": session.message_count,
