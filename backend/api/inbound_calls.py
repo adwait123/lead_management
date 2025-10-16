@@ -3,7 +3,6 @@ Inbound Calls API endpoints for inbound calling functionality
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Form, Response
 from twilio.twiml.voice_response import VoiceResponse, Connect, Dial
-from services.inbound_call_service import InboundCallService
 import os
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, desc
@@ -491,19 +490,18 @@ async def handle_twilio_webhook(
 
     logger.info(f"Received Twilio webhook: {webhook_data.dict()}")
 
-    # Create or update inbound call record
+    # Create or update inbound call record for logging purposes
     existing_call = db.query(InboundCall).filter(
         InboundCall.twilio_call_sid == webhook_data.CallSid
     ).first()
 
     if existing_call:
-        # Update existing call
+        # Update existing call status
         existing_call.call_status = webhook_data.CallStatus.lower()
         db.commit()
         call_id = existing_call.id
-        room_name = existing_call.room_name
     else:
-        # Create new inbound call record
+        # Create new inbound call record for logging/tracking
         inbound_call = InboundCall(
             caller_phone_number=webhook_data.From,
             inbound_phone_number=webhook_data.To,
@@ -515,7 +513,8 @@ async def handle_twilio_webhook(
                 "caller_city": webhook_data.CallerCity,
                 "caller_state": webhook_data.CallerState,
                 "caller_country": webhook_data.CallerCountry,
-                "api_version": webhook_data.ApiVersion
+                "api_version": webhook_data.ApiVersion,
+                "routing_method": "livekit_sip_trunk"
             }
         )
 
@@ -524,46 +523,31 @@ async def handle_twilio_webhook(
         db.refresh(inbound_call)
         call_id = inbound_call.id
 
-        # Process new inbound call
-        call_service = InboundCallService(db)
-        success = await call_service.process_call(call_id)
-        if not success:
-            response = VoiceResponse()
-            response.say("An application error has occurred. Goodbye.")
-            return Response(content=str(response), media_type="application/xml")
+        logger.info(f"Created inbound call record {call_id} - routing to LiveKit SIP trunk")
 
-        db.refresh(inbound_call)
-        room_name = inbound_call.room_name
-
-    # Create TwiML response for LiveKit SIP integration
+    # Create TwiML response for LiveKit SIP trunk integration
     response = VoiceResponse()
 
-    # Validate that we have a room name
-    if not room_name:
-        logger.error(f"No room name available for call {call_id}")
-        response.say("Service temporarily unavailable. Please try again later.")
-        return Response(content=str(response), media_type="application/xml")
+    # Get caller phone number from webhook data
+    caller_phone = webhook_data.From
 
-    # Get LiveKit SIP configuration
-    livekit_url = os.getenv('LIVEKIT_URL')
-    if not livekit_url:
-        logger.error("LIVEKIT_URL environment variable not set")
+    # Get SIP trunk configuration
+    sip_inbound_trunk_id = os.getenv('SIP_INBOUND_TRUNK_ID')
+    if not sip_inbound_trunk_id:
+        logger.error("SIP_INBOUND_TRUNK_ID environment variable not set")
         response.say("Service configuration error. Please contact support.")
         return Response(content=str(response), media_type="application/xml")
 
-    # Extract the domain from the LiveKit URL (remove wss:// prefix)
-    livekit_domain = livekit_url.replace('wss://', '').replace('ws://', '')
+    # Route to LiveKit SIP trunk - LiveKit will handle room creation and agent dispatch
+    # Using the configured SIP trunk endpoint
+    sip_uri = f"sip:{caller_phone}@1w7n1n4d64r.sip.livekit.cloud;transport=tcp"
 
-    # Create SIP URI for LiveKit trunk
-    # Format: sip:room_name@livekit-domain (room names now SIP-compatible)
-    sip_uri = f"sip:{room_name}@{livekit_domain}"
-
-    # Use Dial + Sip instead of Connect + Stream
+    # Use Dial + Sip to route to LiveKit SIP trunk
     dial = Dial(timeout=30)
     dial.sip(sip_uri)
     response.append(dial)
 
-    logger.info(f"Generated TwiML with SIP URI: {sip_uri} for call {call_id}")
+    logger.info(f"Generated TwiML routing to LiveKit SIP trunk: {sip_uri} for call {call_id}")
 
     return Response(content=str(response), media_type="application/xml")
 
