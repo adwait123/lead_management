@@ -1,7 +1,7 @@
 """
 Inbound Calls API endpoints for inbound calling functionality
 """
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, desc
 from typing import Optional, List, Dict, Any
@@ -456,10 +456,35 @@ async def get_inbound_call_stats(db: Session = Depends(get_db)):
 # Webhook endpoints
 @router.post("/webhooks/twilio")
 async def handle_twilio_webhook(
-    webhook_data: TwilioWebhookSchema,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    CallSid: str = Form(...),
+    From: str = Form(...),
+    To: str = Form(...),
+    CallStatus: str = Form(...),
+    Direction: Optional[str] = Form(None),
+    ApiVersion: Optional[str] = Form(None),
+    CallerName: Optional[str] = Form(None),
+    CallerCity: Optional[str] = Form(None),
+    CallerState: Optional[str] = Form(None),
+    CallerZip: Optional[str] = Form(None),
+    CallerCountry: Optional[str] = Form(None),
 ):
+    """Handle Twilio webhook for inbound calls"""
+
+    webhook_data = TwilioWebhookSchema(
+        CallSid=CallSid,
+        From=From,
+        To=To,
+        CallStatus=CallStatus,
+        Direction=Direction,
+        ApiVersion=ApiVersion,
+        CallerName=CallerName,
+        CallerCity=CallerCity,
+        CallerState=CallerState,
+        CallerZip=CallerZip,
+        CallerCountry=CallerCountry,
+    )
     """Handle Twilio webhook for inbound calls"""
 
     logger.info(f"Received Twilio webhook: {webhook_data.dict()}")

@@ -325,7 +325,7 @@ class InboundCallService:
 
             # Create initial system message
             system_message = Message.create_system_message(
-                session_id=session.id,
+                agent_session_id=session.id,
                 lead_id=lead.id,
                 content=f"Inbound call started from {call.caller_phone_number}",
                 metadata={
@@ -354,7 +354,7 @@ class InboundCallService:
             from services.workflow_service import WorkflowService
 
             workflow_service = WorkflowService(self.db)
-            await workflow_service.handle_lead_created(
+            workflow_service.handle_lead_created(
                 lead_id=lead.id,
                 source=lead.source,
                 form_data={
