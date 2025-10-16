@@ -1,7 +1,10 @@
 """
 Inbound Calls API endpoints for inbound calling functionality
 """
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Form, Response
+from twilio.twiml.voice_response import VoiceResponse, Connect
+from services.inbound_call_service import InboundCallService
+import os
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, desc
 from typing import Optional, List, Dict, Any
@@ -485,7 +488,6 @@ async def handle_twilio_webhook(
         CallerZip=CallerZip,
         CallerCountry=CallerCountry,
     )
-    """Handle Twilio webhook for inbound calls"""
 
     logger.info(f"Received Twilio webhook: {webhook_data.dict()}")
 
@@ -499,6 +501,7 @@ async def handle_twilio_webhook(
         existing_call.call_status = webhook_data.CallStatus.lower()
         db.commit()
         call_id = existing_call.id
+        room_name = existing_call.room_name
     else:
         # Create new inbound call record
         inbound_call = InboundCall(
@@ -522,9 +525,23 @@ async def handle_twilio_webhook(
         call_id = inbound_call.id
 
         # Process new inbound call
-        background_tasks.add_task(process_inbound_call, call_id)
+        call_service = InboundCallService(db)
+        success = await call_service.process_call(call_id)
+        if not success:
+            response = VoiceResponse()
+            response.say("An application error has occurred. Goodbye.")
+            return Response(content=str(response), media_type="application/xml")
 
-    return {"status": "success", "call_id": call_id}
+        db.refresh(inbound_call)
+        room_name = inbound_call.room_name
+
+    # Create TwiML response
+    response = VoiceResponse()
+    connect = Connect()
+    connect.stream(url=f"wss://{os.getenv('LIVEKIT_URL')}/sip?room_name={room_name}")
+    response.append(connect)
+
+    return Response(content=str(response), media_type="application/xml")
 
 
 @router.post("/webhooks/livekit")
@@ -556,37 +573,6 @@ async def handle_livekit_webhook(
 
     return {"status": "success", "event": webhook_data.event}
 
-
-# Background tasks
-async def process_inbound_call(call_id: int):
-    """Background task to process inbound call (create lead, assign agent, etc.)"""
-    from models.database import SessionLocal
-    db = SessionLocal()
-
-    try:
-        # Import here to avoid circular imports
-        from services.inbound_call_service import InboundCallService
-
-        call_service = InboundCallService(db)
-        success = await call_service.process_call(call_id)
-
-        if success:
-            logger.info(f"Successfully processed inbound call {call_id}")
-        else:
-            logger.error(f"Failed to process inbound call {call_id}")
-
-    except Exception as e:
-        logger.error(f"Error processing inbound call {call_id}: {str(e)}")
-
-        # Update call status to failed
-        call = db.query(InboundCall).filter(InboundCall.id == call_id).first()
-        if call:
-            call.call_status = "failed"
-            call.error_message = str(e)
-            call.ended_at = datetime.utcnow()
-            db.commit()
-    finally:
-        db.close()
 
 
 async def handle_livekit_room_started(room_name: str, event_data: Dict[str, Any]):
