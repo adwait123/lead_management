@@ -64,7 +64,7 @@ async def get_calls(
     valid_calls = []
     for call in calls:
         try:
-            valid_calls.append(CallResponseSchema.from_orm(call))
+            valid_calls.append(CallResponseSchema.model_validate(call))
         except ValidationError as e:
             logger.warning(f"Skipping call {call.id} due to validation error: {e}")
             continue
@@ -86,7 +86,7 @@ async def get_call(call_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Call not found")
 
     try:
-        return CallResponseSchema.from_orm(call)
+        return CallResponseSchema.model_validate(call)
     except ValidationError as e:
         logger.error(f"Call {call_id} has invalid data: {e}")
         raise HTTPException(status_code=422, detail=f"Call data validation failed: {str(e)}")
@@ -123,7 +123,7 @@ async def get_calls_for_lead(
     valid_calls = []
     for call in calls:
         try:
-            valid_calls.append(CallResponseSchema.from_orm(call))
+            valid_calls.append(CallResponseSchema.model_validate(call))
         except ValidationError as e:
             logger.warning(f"Skipping call {call.id} due to validation error: {e}")
             continue
@@ -248,7 +248,7 @@ async def update_call(call_id: int, call_data: CallUpdateSchema, db: Session = D
     db.refresh(call)
 
     try:
-        return CallResponseSchema.from_orm(call)
+        return CallResponseSchema.model_validate(call)
     except ValidationError as e:
         logger.error(f"Updated call {call_id} has invalid data: {e}")
         raise HTTPException(status_code=422, detail=f"Call data validation failed: {str(e)}")

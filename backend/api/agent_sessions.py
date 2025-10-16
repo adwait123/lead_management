@@ -73,7 +73,7 @@ async def create_agent_session(session_data: AgentSessionCreateSchema, db: Sessi
 
         logger.info(f"Created agent session {session.id} for agent {session_data.agent_id} and lead {session_data.lead_id}")
 
-        return AgentSessionResponseSchema.from_orm(session)
+        return AgentSessionResponseSchema.model_validate(session)
     except Exception as e:
         db.rollback()
         logger.error(f"Error creating agent session: {str(e)}")
@@ -112,7 +112,7 @@ async def list_agent_sessions(
     total_pages = (total + page_size - 1) // page_size
 
     return AgentSessionListResponseSchema(
-        sessions=[AgentSessionResponseSchema.from_orm(session) for session in sessions],
+        sessions=[AgentSessionResponseSchema.model_validate(session) for session in sessions],
         total=total,
         page=page,
         page_size=page_size,
@@ -127,7 +127,7 @@ async def get_agent_session(session_id: int, db: Session = Depends(get_db)):
     if not session:
         raise HTTPException(status_code=404, detail="Agent session not found")
 
-    return AgentSessionResponseSchema.from_orm(session)
+    return AgentSessionResponseSchema.model_validate(session)
 
 @router.get("/lead/{lead_id}/active", response_model=Optional[AgentSessionResponseSchema])
 async def get_active_session_for_lead(lead_id: int, db: Session = Depends(get_db)):
@@ -148,7 +148,7 @@ async def get_active_session_for_lead(lead_id: int, db: Session = Depends(get_db
     if not session:
         return None
 
-    return AgentSessionResponseSchema.from_orm(session)
+    return AgentSessionResponseSchema.model_validate(session)
 
 @router.put("/{session_id}", response_model=AgentSessionResponseSchema)
 async def update_agent_session(
@@ -176,7 +176,7 @@ async def update_agent_session(
         db.refresh(session)
 
         logger.info(f"Updated agent session {session_id}")
-        return AgentSessionResponseSchema.from_orm(session)
+        return AgentSessionResponseSchema.model_validate(session)
     except Exception as e:
         db.rollback()
         logger.error(f"Error updating agent session {session_id}: {str(e)}")
@@ -210,7 +210,7 @@ async def update_message_stats(
     try:
         db.commit()
         db.refresh(session)
-        return AgentSessionResponseSchema.from_orm(session)
+        return AgentSessionResponseSchema.model_validate(session)
     except Exception as e:
         db.rollback()
         logger.error(f"Error updating message stats for session {session_id}: {str(e)}")
@@ -240,7 +240,7 @@ async def end_agent_session(
         db.refresh(session)
 
         logger.info(f"Ended agent session {session_id} with reason: {reason}")
-        return AgentSessionResponseSchema.from_orm(session)
+        return AgentSessionResponseSchema.model_validate(session)
     except Exception as e:
         db.rollback()
         logger.error(f"Error ending agent session {session_id}: {str(e)}")

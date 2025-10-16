@@ -184,7 +184,7 @@ async def get_leads(
     valid_leads = []
     for lead in leads:
         try:
-            valid_leads.append(LeadResponseSchema.from_orm(lead))
+            valid_leads.append(LeadResponseSchema.model_validate(lead))
         except ValidationError as e:
             logger.warning(f"Skipping lead {lead.id} due to validation error: {e}")
             continue
@@ -205,7 +205,7 @@ async def get_lead(lead_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Lead not found")
 
     try:
-        return LeadResponseSchema.from_orm(lead)
+        return LeadResponseSchema.model_validate(lead)
     except ValidationError as e:
         logger.error(f"Lead {lead_id} has invalid data: {e}")
         raise HTTPException(status_code=422, detail=f"Lead data validation failed: {str(e)}")
@@ -349,7 +349,7 @@ async def create_lead(lead_data: LeadCreateSchema, db: Session = Depends(get_db)
         # Don't fail the lead creation if outbound calling fails
 
     try:
-        return LeadResponseSchema.from_orm(lead)
+        return LeadResponseSchema.model_validate(lead)
     except ValidationError as e:
         logger.error(f"Created lead {lead.id} has invalid data: {e}")
         raise HTTPException(status_code=422, detail=f"Lead data validation failed: {str(e)}")
@@ -370,7 +370,7 @@ async def update_lead(lead_id: int, lead_data: LeadUpdateSchema, db: Session = D
     db.refresh(lead)
 
     try:
-        return LeadResponseSchema.from_orm(lead)
+        return LeadResponseSchema.model_validate(lead)
     except ValidationError as e:
         logger.error(f"Updated lead {lead_id} has invalid data: {e}")
         raise HTTPException(status_code=422, detail=f"Lead data validation failed: {str(e)}")
