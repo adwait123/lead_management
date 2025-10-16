@@ -20,7 +20,7 @@ logger: logging.Logger = logging.getLogger(os.getenv("AGENT_NAME"))
 
 
 class Assistant(agents.Agent):
-    def __init__(self, room: rtc.Room, is_sip_session: bool = False) -> None:
+    def __init__(self, room: rtc.Room, is_sip_session: bool = False, is_inbound_call: bool = False) -> None:
         super().__init__(
             instructions=textwrap.dedent("""
                     You are Jack, the Floor Covering International Sales Assistant, an expert in helping potential clients schedule their Free In-Home Design Consultation. Your primary role is to validate the user's request, confirm appointment details, and secure a booking for a professional design consultant.
@@ -102,6 +102,7 @@ class Assistant(agents.Agent):
             turn_detection=EnglishModel(),
         )
         self.room = room
+        self.is_inbound_call = is_inbound_call
 
     async def on_enter(self):
         logger.info(f"on_enter: Agent started now for user: {self.session.userdata.user_id}")
@@ -177,9 +178,17 @@ class Assistant(agents.Agent):
         )
         await self.update_chat_ctx(chat_ctx)
 
-        logger.info(f"on_enter: Chat context: {chat_ctx}")
-
-        if is_outbound_call:
+        if self.is_inbound_call:
+            # Inbound call greeting
+            await self.session.generate_reply(
+                instructions=textwrap.dedent(f"""
+                    You are Jack from Floor Covering International.
+                    Start the conversation immediately with: "Hi, thank you for calling Floor Covering International. My name is Jack. How can I help you today?"
+                    Wait for their response before proceeding.
+                """),
+                allow_interruptions=True
+            )
+        elif is_outbound_call:
             # Extract first name from customer context for personalized greeting
             customer_first_name = "there"  # Default fallback
             if customer_context and "First Name:" in customer_context:
@@ -443,11 +452,10 @@ async def entrypoint(ctx: agents.JobContext):
         metadata = {"identity": "sales-lead"}
     logger.info(f"metadata: {metadata}")
 
-    # Check if this is an outbound call (has phone_number in metadata)
-    is_outbound_call = "phone_number" in metadata
-    phone_number = metadata.get("phone_number")
+    is_inbound_call = metadata.get("call_type") == "inbound"
 
-    if is_outbound_call and phone_number:
+    if not is_inbound_call and "phone_number" in metadata:
+        phone_number = metadata.get("phone_number")
         logger.info(f"Starting outbound call to: {phone_number}")
 
         # Connect to establish room connection
@@ -573,7 +581,7 @@ async def entrypoint(ctx: agents.JobContext):
 
     await session_obj.start(
         room=ctx.room,
-        agent=Assistant(room=ctx.room, is_sip_session=is_sip_session),
+        agent=Assistant(room=ctx.room, is_sip_session=is_sip_session, is_inbound_call=is_inbound_call),
         room_input_options=room_input_options,
         room_output_options=room_output_options
     )
