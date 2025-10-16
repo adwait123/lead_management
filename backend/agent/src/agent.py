@@ -582,7 +582,7 @@ async def entrypoint(ctx: agents.JobContext):
 
 
 if __name__ == "__main__":
-    logger.info(f"Starting agent... {os.getenv("AGENT_NAME","XXX de nada XXX")}")
+    logger.info(f"Starting agent... {os.getenv('AGENT_NAME','XXX de nada XXX')}")
     agents.cli.run_app(
         agents.WorkerOptions(entrypoint_fnc=entrypoint, agent_name=os.getenv("AGENT_NAME"))
     )
