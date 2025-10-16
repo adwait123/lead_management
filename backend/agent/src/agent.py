@@ -9,7 +9,7 @@ from dataclasses import asdict
 import asyncio
 
 from livekit import agents, rtc
-from livekit.plugins import deepgram, openai, cartesia, silero, noise_cancellation
+from livekit.plugins import deepgram, openai, cartesia, silero
 from livekit.plugins.turn_detector.english import EnglishModel
 
 from utils import session, tracing, fetching, common
@@ -565,9 +565,7 @@ async def entrypoint(ctx: agents.JobContext):
     # For outbound calls, always use audio mode
     modalities = metadata.get("modalities", "text_and_audio")
     if is_outbound_call or modalities != "text_only":
-        room_input_options = agents.RoomInputOptions(
-            text_enabled=True, audio_enabled=True, noise_cancellation=noise_cancellation.BVC()
-        )
+        room_input_options = agents.RoomInputOptions(text_enabled=True, audio_enabled=True)
         room_output_options = agents.RoomOutputOptions(transcription_enabled=True, audio_enabled=True)
     else:
         room_input_options = agents.RoomInputOptions(text_enabled=True, audio_enabled=False)
