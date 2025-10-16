@@ -10,6 +10,9 @@ import os
 import asyncio
 import logging
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
 # Import models and database
 from models.database import create_tables, SessionLocal
 from api.leads import router as leads_router

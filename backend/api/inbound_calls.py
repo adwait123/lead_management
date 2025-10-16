@@ -69,7 +69,7 @@ async def get_inbound_calls(
     valid_calls = []
     for call in inbound_calls:
         try:
-            valid_calls.append(InboundCallResponseSchema.from_orm(call))
+            valid_calls.append(InboundCallResponseSchema.model_validate(call))
         except ValidationError as e:
             logger.warning(f"Skipping inbound call {call.id} due to validation error: {e}")
             continue
@@ -91,7 +91,7 @@ async def get_inbound_call(call_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Inbound call not found")
 
     try:
-        return InboundCallResponseSchema.from_orm(call)
+        return InboundCallResponseSchema.model_validate(call)
     except ValidationError as e:
         logger.error(f"Inbound call {call_id} has invalid data: {e}")
         raise HTTPException(status_code=422, detail=f"Inbound call data validation failed: {str(e)}")
@@ -128,7 +128,7 @@ async def get_inbound_calls_for_lead(
     valid_calls = []
     for call in inbound_calls:
         try:
-            valid_calls.append(InboundCallResponseSchema.from_orm(call))
+            valid_calls.append(InboundCallResponseSchema.model_validate(call))
         except ValidationError as e:
             logger.warning(f"Skipping inbound call {call.id} due to validation error: {e}")
             continue
@@ -168,7 +168,7 @@ async def get_inbound_calls_by_phone(
     valid_calls = []
     for call in inbound_calls:
         try:
-            valid_calls.append(InboundCallResponseSchema.from_orm(call))
+            valid_calls.append(InboundCallResponseSchema.model_validate(call))
         except ValidationError as e:
             logger.warning(f"Skipping inbound call {call.id} due to validation error: {e}")
             continue
@@ -210,7 +210,7 @@ async def create_inbound_call(
     background_tasks.add_task(process_inbound_call, inbound_call.id)
 
     try:
-        return InboundCallResponseSchema.from_orm(inbound_call)
+        return InboundCallResponseSchema.model_validate(inbound_call)
     except ValidationError as e:
         logger.error(f"Created inbound call {inbound_call.id} has invalid data: {e}")
         raise HTTPException(status_code=422, detail=f"Inbound call data validation failed: {str(e)}")
@@ -239,7 +239,7 @@ async def update_inbound_call(call_id: int, call_data: InboundCallUpdateSchema, 
     db.refresh(call)
 
     try:
-        return InboundCallResponseSchema.from_orm(call)
+        return InboundCallResponseSchema.model_validate(call)
     except ValidationError as e:
         logger.error(f"Updated inbound call {call_id} has invalid data: {e}")
         raise HTTPException(status_code=422, detail=f"Inbound call data validation failed: {str(e)}")
