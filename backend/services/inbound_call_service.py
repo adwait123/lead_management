@@ -208,8 +208,10 @@ class InboundCallService:
             from livekit.protocol.room import CreateRoomRequest
             from livekit.protocol.agent_dispatch import CreateAgentDispatchRequest
 
-            # Generate room name to match LiveKit dispatch rule: call <<caller-number>>
-            room_name = f"call {call.caller_phone_number}"
+            # Generate room name compatible with SIP URIs (no spaces/special chars)
+            # Format: call-{phone_digits} to match LiveKit dispatch rule pattern
+            phone_digits = call.caller_phone_number.replace('+', '').replace('-', '')
+            room_name = f"call-{phone_digits}"
 
             # Create metadata with call information
             metadata = {

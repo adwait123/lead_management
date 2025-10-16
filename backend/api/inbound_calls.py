@@ -555,10 +555,8 @@ async def handle_twilio_webhook(
     livekit_domain = livekit_url.replace('wss://', '').replace('ws://', '')
 
     # Create SIP URI for LiveKit trunk
-    # Format: sip:room_name@livekit-domain (URL-encode room name for SIP compatibility)
-    import urllib.parse
-    encoded_room_name = urllib.parse.quote(room_name, safe='')
-    sip_uri = f"sip:{encoded_room_name}@{livekit_domain}"
+    # Format: sip:room_name@livekit-domain (room names now SIP-compatible)
+    sip_uri = f"sip:{room_name}@{livekit_domain}"
 
     # Use Dial + Sip instead of Connect + Stream
     dial = Dial(timeout=30)
