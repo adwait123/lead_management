@@ -41,6 +41,7 @@ class Lead(Base):
 
     # Relationships
     calls = relationship("Call", back_populates="lead")
+    inbound_calls = relationship("InboundCall", back_populates="lead")
 
     def __repr__(self):
         return f"<Lead(id={self.id}, name='{self.name}', email='{self.email}', status='{self.status}')>"

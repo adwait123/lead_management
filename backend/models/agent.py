@@ -74,6 +74,7 @@ class Agent(Base):
     # Relationships
     appointments = relationship("Appointment", back_populates="agent")
     calls = relationship("Call", back_populates="agent")
+    inbound_calls = relationship("InboundCall", back_populates="agent")
 
     def __repr__(self):
         return f"<Agent(id={self.id}, name='{self.name}', type='{self.type}')>"

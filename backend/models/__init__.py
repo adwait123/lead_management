@@ -7,6 +7,7 @@ from .appointment import Appointment, AppointmentType
 from .business_profile import BusinessProfile, FAQ
 from .follow_up_task import FollowUpTask
 from .call import Call
+from .inbound_call import InboundCall
 from .database import Base, engine, SessionLocal
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "FAQ",
     "FollowUpTask",
     "Call",
+    "InboundCall",
     "Base",
     "engine",
     "SessionLocal"
