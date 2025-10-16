@@ -77,6 +77,53 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to start background follow-up processor: {str(e)}")
 
+    # Start inbound calling agent worker
+    agent_name = os.getenv("AGENT_NAME")
+    if agent_name == "inbound_raq":
+        logger.info("Starting inbound calling agent worker...")
+
+        try:
+            import subprocess
+            import threading
+
+            def run_agent_worker():
+                """Background thread to run the inbound calling agent worker"""
+                try:
+                    # Change to agent directory and run the agent
+                    agent_dir = os.path.join(os.path.dirname(__file__), "agent")
+                    cmd = ["python", "src/agent.py", "start"]
+
+                    # Run the agent worker process
+                    process = subprocess.Popen(
+                        cmd,
+                        cwd=agent_dir,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+
+                    logger.info(f"Agent worker process started with PID: {process.pid}")
+
+                    # Monitor the process
+                    stdout, stderr = process.communicate()
+                    if process.returncode != 0:
+                        logger.error(f"Agent worker failed: {stderr}")
+                    else:
+                        logger.info("Agent worker completed successfully")
+
+                except Exception as e:
+                    logger.error(f"Error starting agent worker process: {str(e)}")
+
+            # Start the agent worker in a background thread
+            agent_thread = threading.Thread(target=run_agent_worker, daemon=True)
+            agent_thread.start()
+            logger.info("Inbound calling agent worker thread started successfully")
+
+        except Exception as e:
+            logger.error(f"Failed to start inbound calling agent worker: {str(e)}")
+    else:
+        logger.info(f"Agent worker not started (AGENT_NAME={agent_name})")
+
 # Include API routers
 app.include_router(leads_router)
 app.include_router(agents_router)
