@@ -20,7 +20,7 @@ logger: logging.Logger = logging.getLogger(os.getenv("AGENT_NAME"))
 
 
 class Assistant(agents.Agent):
-    def __init__(self, room: rtc.Room, is_sip_session: bool = False, is_inbound_call: bool = False) -> None:
+    def __init__(self, room: rtc.Room, is_sip_session: bool = False) -> None:
         super().__init__(
             instructions=textwrap.dedent("""
                     You are Jack, the Floor Covering International Sales Assistant, an expert in helping potential clients schedule their Free In-Home Design Consultation. Your primary role is to validate the user's request, confirm appointment details, and secure a booking for a professional design consultant.
@@ -102,133 +102,34 @@ class Assistant(agents.Agent):
             turn_detection=EnglishModel(),
         )
         self.room = room
-        self.is_inbound_call = is_inbound_call
 
     async def on_enter(self):
         logger.info(f"on_enter: Agent started now for user: {self.session.userdata.user_id}")
         logger.info(f"on_enter: User info: {self.session.userdata.country}, {self.session.userdata.app_version}")
 
-        # Check if this is an outbound call (sales lead vs console/inbound)
-        is_outbound_call = self.session.userdata.app_version == "outbound_sales"
-
-        selected_keys = {"user_id", "country", "app_version", "all_devices"}
-        user_data = {k: v for k, v in asdict(self.session.userdata).items() if k in selected_keys}
-
-        # For outbound calls, skip business rules fetching to avoid errors
-        if is_outbound_call:
-            business_rules = "Focus on scheduling appointments efficiently and professionally."
-        else:
-            business_rules = fetching.fetch_business_rules()
+        business_rules = fetching.fetch_business_rules()
 
         # Add context instructions
         chat_ctx = self.chat_ctx.copy()
 
-        # Extract customer info for outbound calls
-        customer_context = ""
-        if is_outbound_call:
-            # Access room metadata to get customer info
-            room_metadata = getattr(self.room, 'metadata', {})
-            if room_metadata:
-                try:
-                    # Parse room metadata to get customer info
-                    import json
-                    if isinstance(room_metadata, str):
-                        metadata_dict = json.loads(room_metadata)
-                    else:
-                        metadata_dict = room_metadata
-
-                    customer_info = metadata_dict.get("customer_info", {})
-                    if customer_info:
-                        first_name = customer_info.get("first_name", "")
-                        last_name = customer_info.get("last_name", "")
-                        address = customer_info.get("address", "")
-                        project_info = customer_info.get("project_info", "")
-
-                        customer_context = f"""
-                        CUSTOMER INFORMATION (from lead):
-                        - First Name: {first_name}
-                        - Last Name: {last_name}
-                        - Address: {address}
-                        - Project Info: {project_info}
-
-                        GREETING PROTOCOL:
-                        1. Start with: "Hi, I am Jack from Floor Covering International. Is this {first_name}?"
-                        2. Wait for confirmation (Yes/No)
-                        3. If YES: Proceed with sales flow
-                        4. If NO: Ask to speak with {first_name} or politely end call
-
-                        OPTION PRESENTATION STRATEGY:
-                        - Start with only 2 main options when presenting choices
-                        - Only provide additional options if customer specifically asks for more
-                        - Keep initial choices simple and clear
-                        """
-                except:
-                    customer_context = ""
-
         chat_ctx.add_message(
             role="system",  # role=system works for OpenAI's LLM and Realtime API
             content=textwrap.dedent(f"""
-                Current user data: {user_data}.
-
-                {customer_context}
-
                 Follow these business rules:
                 {business_rules}
             """)
         )
         await self.update_chat_ctx(chat_ctx)
 
-        if self.is_inbound_call:
-            # Inbound call greeting
-            await self.session.generate_reply(
-                instructions=textwrap.dedent(f"""
-                    You are Jack from Floor Covering International.
-                    Start the conversation immediately with: "Hi, thank you for calling Floor Covering International. My name is Jack. How can I help you today?"
-                    Wait for their response before proceeding.
-                """),
-                allow_interruptions=True
-            )
-        elif is_outbound_call:
-            # Extract first name from customer context for personalized greeting
-            customer_first_name = "there"  # Default fallback
-            if customer_context and "First Name:" in customer_context:
-                try:
-                    # Extract first name from customer context
-                    lines = customer_context.split('\n')
-                    for line in lines:
-                        if "First Name:" in line:
-                            customer_first_name = line.split("First Name:")[-1].strip()
-                            break
-                except:
-                    customer_first_name = "there"
-
-            # For outbound calls, wait for customer to speak first, then start sales script
-            await self.session.generate_reply(
-                instructions=textwrap.dedent(f"""
-                    You are Jack from Floor Covering International making an outbound call.
-                    The customer should speak first since you called them.
-                    Wait for them to say "Hello" or respond, then immediately follow the GREETING PROTOCOL:
-
-                    Say: "Hi, I am Jack from Floor Covering International. Is this {customer_first_name}?"
-
-                    Wait for their confirmation:
-                    - If YES: Continue with "Great! I see you recently submitted a request for a flooring quote. Do you have a few minutes to confirm your appointment details?"
-                    - If NO: Ask "May I speak with {customer_first_name}?" or politely end the call
-
-                    Only proceed with the sales flow after confirming you're speaking with the right person.
-                """),
-                allow_interruptions=True
-            )
-        else:
-            # Console mode - start immediately
-            await self.session.generate_reply(
-                instructions=textwrap.dedent(f"""
-                    You are Jack calling from Floor Covering International. The customer submitted a Request to quote on Yelp for a flooring job.
-                    Start the conversation immediately with: "Hi, this is Jack from Floor Covering International. I see you recently submitted a Request to quote on Yelp for a flooring job. Is that right, and do you still have a few minutes to confirm your appointment details?"
-                    Wait for their response before proceeding.
-                """),
-                allow_interruptions=True
-            )
+        # Inbound call greeting
+        await self.session.generate_reply(
+            instructions=textwrap.dedent(f"""
+                You are Jack from Floor Covering International.
+                Start the conversation immediately with: "Hi, thank you for calling Floor Covering International. My name is Jack. How can I help you today?"
+                Wait for their response before proceeding.
+            """),
+            allow_interruptions=True
+        )
 
     async def on_exit(self) -> None:
         logger.info(f"on_exit: Agent exited")
@@ -452,96 +353,38 @@ async def entrypoint(ctx: agents.JobContext):
         metadata = {"identity": "sales-lead"}
     logger.info(f"metadata: {metadata}")
 
-    is_inbound_call = metadata.get("call_type") == "inbound"
+    # Original inbound/console logic
+    # parse metadata from the Livekit token
+    mock_log_guidance = json.loads(metadata["mock_log_guidance"]) if "mock_log_guidance" in metadata else None
+    modalities = metadata["modalities"] if "modalities" in metadata else "text_and_audio"
+    conversation_id = metadata.get("conversation_id")
 
-    if not is_inbound_call and "phone_number" in metadata:
-        phone_number = metadata.get("phone_number")
-        logger.info(f"Starting outbound call to: {phone_number}")
+    # Gather user information from metadata, if available
+    user_id = None
+    user_info = {}
+    tenant_id = None
+    if "identity" in metadata:
+        user_id = metadata["identity"]
+        user_info = fetching.fetch_user_info(user_id)
 
-        # Connect to establish room connection
-        await ctx.connect()
+    # Extract tenant_id from metadata (provided by SDK)
+    if "tenant_id" in metadata:
+        tenant_id = metadata["tenant_id"]
 
-        try:
-            # Validate phone number format
-            import re
-            if not re.match(r'^\+1[2-9]\d{2}[2-9]\d{6}$', phone_number):
-                raise ValueError(f"Invalid phone number format: {phone_number}")
+    # Connect to establish room connection
+    await ctx.connect()
 
-            # Validate SIP trunk ID
-            sip_trunk_id = os.getenv("SIP_OUTBOUND_TRUNK_ID")
-            if not sip_trunk_id:
-                raise ValueError("SIP_OUTBOUND_TRUNK_ID not configured")
+    # Get participants and their info
+    participant: rtc.Participant = await ctx.wait_for_participant()
 
-            # Create SIP participant for outbound call
-            from livekit import api
-            await ctx.api.sip.create_sip_participant(api.CreateSIPParticipantRequest(
-                room_name=ctx.room.name,
-                sip_trunk_id=sip_trunk_id,
-                sip_call_to=phone_number,
-                participant_identity=f"customer_{phone_number.replace('+', '').replace('-', '')}",
-                wait_until_answered=True
-            ))
-            logger.info(f"SIP participant created successfully for {phone_number}")
-
-        except ValueError as e:
-            logger.error(f"Configuration error: {e}")
-            ctx.shutdown()
-            return
-        except api.TwirpError as e:
-            logger.error(f"SIP API error: {e.message}")
-            ctx.shutdown()
-            return
-        except Exception as e:
-            logger.error(f"Unexpected error creating SIP participant: {e}")
-            ctx.shutdown()
-            return
-
-        # Wait for participant to join
-        participant: rtc.Participant = await ctx.wait_for_participant()
+    is_sip_session = False
+    if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
         is_sip_session = True
-
-        # For outbound calls, use metadata for user info
-        user_id = f"lead_{phone_number.replace('+', '').replace('-', '')}"
-        user_info = {
-            "all_devices": {},  # No devices for sales leads
-            "country": "US",
-            "app_version": "outbound_sales"
-        }
-        tenant_id = None
-        conversation_id = metadata.get("conversation_id")
-    else:
-        # Original inbound/console logic
-        # parse metadata from the Livekit token
-        mock_log_guidance = json.loads(metadata["mock_log_guidance"]) if "mock_log_guidance" in metadata else None
-        modalities = metadata["modalities"] if "modalities" in metadata else "text_and_audio"
-        conversation_id = metadata.get("conversation_id")
-
-        # Gather user information from metadata, if available
-        user_id = None
-        user_info = {}
-        tenant_id = None
-        if "identity" in metadata:
-            user_id = metadata["identity"]
-            user_info = fetching.fetch_user_info(user_id)
-
-        # Extract tenant_id from metadata (provided by SDK)
-        if "tenant_id" in metadata:
-            tenant_id = metadata["tenant_id"]
-
-        # Connect to establish room connection
-        await ctx.connect()
-
-        # Get participants and their info
-        participant: rtc.Participant = await ctx.wait_for_participant()
-
-        is_sip_session = False
-        if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
-            is_sip_session = True
-            # for SIP, Livekit token doesn't exist; therefore, metadata also doesn't exist;
-            user_phone_number = participant.attributes['sip.phoneNumber']  # e.g. "+15105550100"
-            logger.info(f"Phone number: {user_phone_number}")
-            user_id = fetching.fetch_user_id_from_phone_number(user_phone_number)
-            user_info = fetching.fetch_user_info(user_id)
+        # for SIP, Livekit token doesn't exist; therefore, metadata also doesn't exist;
+        user_phone_number = participant.attributes['sip.phoneNumber']  # e.g. "+15105550100"
+        logger.info(f"Phone number: {user_phone_number}")
+        user_id = fetching.fetch_user_id_from_phone_number(user_phone_number)
+        user_info = fetching.fetch_user_info(user_id)
 
     # Build and start the session
     mock_log_guidance = metadata.get("mock_log_guidance", None)
@@ -581,7 +424,7 @@ async def entrypoint(ctx: agents.JobContext):
 
     await session_obj.start(
         room=ctx.room,
-        agent=Assistant(room=ctx.room, is_sip_session=is_sip_session, is_inbound_call=is_inbound_call),
+        agent=Assistant(room=ctx.room, is_sip_session=is_sip_session),
         room_input_options=room_input_options,
         room_output_options=room_output_options
     )

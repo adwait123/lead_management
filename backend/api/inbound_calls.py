@@ -2,7 +2,7 @@
 Inbound Calls API endpoints for inbound calling functionality
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Form, Response
-from twilio.twiml.voice_response import VoiceResponse, Connect
+from twilio.twiml.voice_response import VoiceResponse, Connect, Dial
 from services.inbound_call_service import InboundCallService
 import os
 from sqlalchemy.orm import Session
@@ -535,11 +535,35 @@ async def handle_twilio_webhook(
         db.refresh(inbound_call)
         room_name = inbound_call.room_name
 
-    # Create TwiML response
+    # Create TwiML response for LiveKit SIP integration
     response = VoiceResponse()
-    connect = Connect()
-    connect.stream(url=f"wss://{os.getenv('LIVEKIT_URL')}/sip?room_name={room_name}")
-    response.append(connect)
+
+    # Validate that we have a room name
+    if not room_name:
+        logger.error(f"No room name available for call {call_id}")
+        response.say("Service temporarily unavailable. Please try again later.")
+        return Response(content=str(response), media_type="application/xml")
+
+    # Get LiveKit SIP configuration
+    livekit_url = os.getenv('LIVEKIT_URL')
+    if not livekit_url:
+        logger.error("LIVEKIT_URL environment variable not set")
+        response.say("Service configuration error. Please contact support.")
+        return Response(content=str(response), media_type="application/xml")
+
+    # Extract the domain from the LiveKit URL (remove wss:// prefix)
+    livekit_domain = livekit_url.replace('wss://', '').replace('ws://', '')
+
+    # Create SIP URI for LiveKit trunk
+    # Format: sip:room_name@livekit-domain
+    sip_uri = f"sip:{room_name}@{livekit_domain}"
+
+    # Use Dial + Sip instead of Connect + Stream
+    dial = Dial(timeout=30)
+    dial.sip(sip_uri)
+    response.append(dial)
+
+    logger.info(f"Generated TwiML with SIP URI: {sip_uri} for call {call_id}")
 
     return Response(content=str(response), media_type="application/xml")
 
