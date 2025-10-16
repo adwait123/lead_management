@@ -31,8 +31,15 @@ def get_db():
 
 # Create all tables
 def create_tables():
-    # Import models to ensure they are registered with Base
+    # Import all models to ensure they are registered with Base
     from .lead import Lead
     from .agent import Agent
     from .agent_session import AgentSession
+    from .message import Message
+    from .appointment import Appointment, AppointmentType
+    from .business_profile import BusinessProfile, FAQ
+    from .follow_up_task import FollowUpTask
+    from .call import Call
+    from .inbound_call import InboundCall
+
     Base.metadata.create_all(bind=engine)

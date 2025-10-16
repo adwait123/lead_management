@@ -461,3 +461,90 @@ class CallTriggerSchema(BaseModel):
     """Schema for triggering outbound calls"""
     agent_id: Optional[int] = None  # If not provided, will use first available outbound agent
     force_call: bool = False  # Override normal trigger conditions
+
+# Inbound Call schemas
+class InboundCallBaseSchema(BaseModel):
+    caller_phone_number: str
+    inbound_phone_number: str = "+17622437375"
+    call_status: str = "received"
+
+class InboundCallCreateSchema(InboundCallBaseSchema):
+    lead_id: Optional[int] = None  # Can be null initially, assigned after lead creation
+    agent_id: Optional[int] = None  # Assigned when agent joins call
+    twilio_call_sid: Optional[str] = None
+    livekit_call_id: Optional[str] = None
+    call_metadata: Optional[Dict[str, Any]] = {}
+
+class InboundCallUpdateSchema(BaseModel):
+    lead_id: Optional[int] = None
+    agent_id: Optional[int] = None
+    call_status: Optional[str] = None
+    twilio_call_sid: Optional[str] = None
+    livekit_call_id: Optional[str] = None
+    room_name: Optional[str] = None
+    call_duration: Optional[int] = None
+    transcript: Optional[str] = None
+    call_summary: Optional[str] = None
+    call_metadata: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    rejection_reason: Optional[str] = None
+
+class InboundCallResponseSchema(InboundCallBaseSchema):
+    id: int
+    lead_id: Optional[int] = None
+    agent_id: Optional[int] = None
+    twilio_call_sid: Optional[str] = None
+    livekit_call_id: Optional[str] = None
+    room_name: Optional[str] = None
+    call_duration: Optional[int] = None
+    transcript: Optional[str] = None
+    call_summary: Optional[str] = None
+    call_metadata: Dict[str, Any] = {}
+    error_message: Optional[str] = None
+    rejection_reason: Optional[str] = None
+    received_at: datetime
+    answered_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class InboundCallListResponseSchema(BaseModel):
+    inbound_calls: List[InboundCallResponseSchema]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+
+class InboundCallFiltersSchema(BaseModel):
+    call_status: Optional[str] = None
+    caller_phone_number: Optional[str] = None
+    agent_id: Optional[int] = None
+    lead_id: Optional[int] = None
+    page: int = 1
+    per_page: int = 20
+
+# Webhook schemas for external services
+class TwilioWebhookSchema(BaseModel):
+    """Schema for Twilio webhook payloads"""
+    CallSid: str
+    From: str
+    To: str
+    CallStatus: str
+    Direction: Optional[str] = None
+    ApiVersion: Optional[str] = None
+    CallerName: Optional[str] = None
+    CallerCity: Optional[str] = None
+    CallerState: Optional[str] = None
+    CallerZip: Optional[str] = None
+    CallerCountry: Optional[str] = None
+
+class LiveKitWebhookSchema(BaseModel):
+    """Schema for LiveKit webhook payloads"""
+    event: str
+    room: Optional[Dict[str, Any]] = None
+    participant: Optional[Dict[str, Any]] = None
+    track: Optional[Dict[str, Any]] = None
+    egress_info: Optional[Dict[str, Any]] = None
