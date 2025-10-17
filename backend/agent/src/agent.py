@@ -1,6 +1,8 @@
 import os
 from typing import AsyncIterable, cast
 import textwrap
+import aiohttp
+import re
 
 from dotenv import load_dotenv
 import logging
@@ -19,70 +21,135 @@ load_dotenv()
 logger: logging.Logger = logging.getLogger(os.getenv("AGENT_NAME"))
 
 
+async def fetch_agent_config(room_name: str) -> dict:
+    """
+    Fetch agent configuration from the database API based on room name.
+    For SIP calls, room name format is usually: call-{phone_digits}
+    """
+    try:
+        # Get API base URL from environment
+        api_base_url = os.getenv("API_BASE_URL", "https://lead-management-staging-backend.onrender.com")
+
+        # Extract call ID from room name if possible
+        # For SIP calls: room format is call-{phone_digits}
+        # For regular calls: might have call_id in metadata
+        call_id = None
+
+        # Try to extract phone number from room name for SIP calls
+        phone_match = re.search(r'call-(\d+)', room_name)
+        if phone_match:
+            phone_digits = phone_match.group(1)
+            # Add country code if not present
+            if len(phone_digits) == 10:
+                phone_number = f"+1{phone_digits}"
+            elif len(phone_digits) == 11 and phone_digits.startswith('1'):
+                phone_number = f"+{phone_digits}"
+            else:
+                phone_number = f"+{phone_digits}"
+
+            logger.info(f"SIP call detected - phone: {phone_number}, room: {room_name}")
+
+            # Find the most recent inbound call for this phone number
+            async with aiohttp.ClientSession() as session:
+                url = f"{api_base_url}/api/inbound-calls/?caller_phone_number={phone_number.replace('+', '%2B')}"
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        calls = data.get("inbound_calls", [])
+                        if calls:
+                            # Get the most recent call
+                            recent_call = calls[0]
+                            call_id = recent_call.get("id")
+                            logger.info(f"Found call ID: {call_id} for phone: {phone_number}")
+
+        if not call_id:
+            logger.warning(f"Could not determine call_id from room: {room_name}")
+            return get_default_agent_config()
+
+        # Fetch agent configuration for this call
+        async with aiohttp.ClientSession() as session:
+            config_url = f"{api_base_url}/api/inbound-calls/agent-config/{call_id}"
+            async with session.get(config_url) as response:
+                if response.status == 200:
+                    config = await response.json()
+                    logger.info(f"Retrieved agent config for call {call_id}")
+                    return config
+                else:
+                    logger.warning(f"Failed to fetch agent config: {response.status}")
+                    return get_default_agent_config()
+
+    except Exception as e:
+        logger.error(f"Error fetching agent config: {str(e)}")
+        return get_default_agent_config()
+
+
+def get_default_agent_config() -> dict:
+    """
+    Return default agent configuration if database lookup fails
+    """
+    return {
+        "agent_name": "Inbound Call Agent",
+        "prompt_template": """You are a helpful customer service representative for AILead Services.
+
+Your role is to:
+- Greet callers warmly and professionally
+- Listen to their needs and questions
+- Provide helpful information about services
+- Collect contact information when appropriate
+- Ensure customer satisfaction
+
+Be friendly, professional, and solution-focused. Keep responses conversational and concise.
+
+Customer Information:
+- Caller: {customer_name}
+- Phone: {caller_phone}
+- Service Requested: {service_requested}
+""",
+        "personality_style": "professional",
+        "model": "gpt-4o-mini",
+        "temperature": 0.7,
+        "max_tokens": 500,
+        "lead_context": {
+            "first_name": "Caller",
+            "phone": "Unknown",
+            "service_requested": "General inquiry"
+        },
+        "call_context": {
+            "caller_phone": "Unknown",
+            "inbound_phone": "+17622437375"
+        }
+    }
+
+
 class Assistant(agents.Agent):
-    def __init__(self, room: rtc.Room, is_sip_session: bool = False) -> None:
+    def __init__(self, room: rtc.Room, agent_config: dict, is_sip_session: bool = False) -> None:
+        # Extract configuration from agent_config
+        prompt_template = agent_config.get("prompt_template", get_default_agent_config()["prompt_template"])
+        model_name = agent_config.get("model", "gpt-4o-mini")
+        temperature = float(agent_config.get("temperature", 0.7))
+        max_tokens = agent_config.get("max_tokens", 500)
+
+        # Get lead and call context for prompt variables
+        lead_context = agent_config.get("lead_context", {})
+        call_context = agent_config.get("call_context", {})
+
+        # Format the prompt template with actual values
+        formatted_instructions = prompt_template.format(
+            customer_name=lead_context.get("first_name", "Caller"),
+            caller_phone=call_context.get("caller_phone", "Unknown"),
+            customer_phone=call_context.get("caller_phone", "Unknown"),
+            inbound_phone=call_context.get("inbound_phone", "+17622437375"),
+            service_requested=lead_context.get("service_requested", "General inquiry"),
+            lead_status=lead_context.get("status", "new"),
+            company=lead_context.get("company", ""),
+            interaction_history="Previous interactions will be loaded from conversation history"
+        )
+
+        logger.info(f"Using agent: {agent_config.get('agent_name', 'Unknown')}")
+        logger.info(f"Model: {model_name}, Temperature: {temperature}")
+
         super().__init__(
-            instructions=textwrap.dedent("""
-                    You are Jack, the Floor Covering International Sales Assistant, an expert in helping potential clients schedule their Free In-Home Design Consultation. Your primary role is to validate the user's request, confirm appointment details, and secure a booking for a professional design consultant.
-
-                    IMPORTANT: This is an outbound voice call. You are calling the customer who submitted a web form. Keep responses professional, confident, friendly, and persuasive. Use a clear, warm, and inviting tone suitable for a premium home services brand.
-
-                    CRITICAL BEHAVIOR RULES:
-                    - Be Proactive and Direct: Your goal is to move the user quickly and smoothly to a confirmed appointment
-                    - Present Steps One at a Time: For any multi-step process, present information ONE step at a time
-                    - Always Wait for User Confirmation: Never proceed without explicit verbal confirmation from the user
-                    - REPEAT BACK UNCLEAR RESPONSES: If customer response seems unclear or contradictory, repeat what you heard: "I heard you say [X], is that correct?"
-                    - CONFIRM BEFORE BOOKING: Always confirm appointment selection clearly: "Just to confirm, you chose [DATE] at [TIME], is that right?"
-                    - CONFIRM EVERY NEW INFORMATION: After receiving ANY new information from the customer (address changes, project details, preferences), immediately confirm by repeating it back: "Got it, so that's [INFORMATION], is that correct?"
-                    - SPELL OUT ALL NUMBERS: For ZIP codes, phone numbers, and addresses, spell out each digit individually. Say "six-two-seven-one" instead of "six thousand two hundred seventy-one"
-                    - Be Crisp and Confident: Maintain an expert tone suitable for a high-quality service
-                    - Keep Responses Suitable for Speech: Use conversational language with no special formatting
-                    - Use Brand Language: Use terms like "Free In-Home Design Consultation," "design consultant," and "Floor Covering International"
-
-                    SALES & SCHEDULING WORKFLOW:
-                    1. Opening and Lead Validation:
-                       Begin immediately: "Hi, this is Jack from Floor Covering International. I see you recently submitted a request to quote on Yelp. Is that right, and do you still have a few minutes to confirm your appointment details?"
-                       WAIT for confirmation.
-
-                    2. Information Confirmation:
-                       Call confirm_lead_details to verify the address and project type.
-                       Confirm address: "Great. I have your consultation address as [ADDRESS]. Is that correct?"
-                       WAIT for confirmation. If customer provides corrections, immediately repeat back: "Got it, so the correct address is [NEW ADDRESS], is that right?"
-                       Confirm project: "And this consultation is for [PROJECT_TYPE]? That will help our consultant prepare."
-                       WAIT for confirmation. If customer provides new details, immediately repeat back: "Perfect, so this is for [NEW PROJECT_TYPE], correct?"
-
-                    3. Material Provision Validation:
-                       Ask: "One quick question - will you be providing the flooring materials for this job, or would you like us to handle everything including materials?"
-                       WAIT for response.
-                       - If customer says they will provide materials:
-                         First attempt: "I understand you have materials in mind. However, would you be open to reconsidering? We have access to exclusive designer collections and premium materials that aren't available to the public, plus we offer comprehensive warranties when we handle both materials and installation. Would you be interested in hearing about our material options during a consultation?"
-                         WAIT for response.
-                         - If customer is open to reconsidering: Continue to appointment scheduling.
-                         - If customer still insists on providing materials: "I understand. Unfortunately, we specialize in full-service installations where we provide both materials and installation to ensure quality and warranty coverage. Thank you for your time, and best of luck with your project."
-                       - If customer wants Floor Covering International to provide materials: Continue to appointment scheduling.
-
-                    4. Appointment Scheduling:
-                       Call generate_appointment_slots with the confirmed details.
-                       Present exactly TWO options initially: "Fantastic. We have a design consultant available to visit you on [DATE_1] at [TIME_1], or [DATE_2] at [TIME_2]. Which works better for you?"
-                       ONLY provide additional options if customer asks for more choices.
-                       WAIT for their selection. Immediately confirm their choice: "Perfect, so you've chosen [SELECTED_DATE] at [SELECTED_TIME], is that correct?"
-
-                    5. Confirmation and Wrap-Up:
-                       Call book_appointment to secure the time.
-                       Provide summary: "Excellent. I have secured your Free In-Home Design Consultation for [DAY], [DATE] at [TIME] at [ADDRESS]. Your consultant will be arriving with hundreds of samples."
-                       Conclude: "You'll receive a confirmation text message with all these details in the next 15-20 minutes. Is there anything else I can help you with today?"
-
-                    EXCEPTION HANDLING:
-                    - No Available Slots: "I apologize, those exact times didn't work. I can have our local scheduling manager call you back within the next hour to personally secure a time that works best. Would that be helpful?" If yes, call raise_callback_request.
-                    - User No Longer Interested: "I understand. Thank you for letting us know. If you change your mind, you can always reach us directly. We appreciate your time."
-                    - Incorrect Information: "Not a problem, I can quickly update that. What is the correct [DETAIL]?" Continue from step 2.
-
-                    SALES TOOLS:
-                    - confirm_lead_details: Verify address and project type from web form
-                    - generate_appointment_slots: Generate available appointment times
-                    - book_appointment: Secure the selected appointment slot
-                    - raise_callback_request: Handle callback requests for scheduling conflicts
-            """),
+            instructions=formatted_instructions,
             stt=deepgram.STT(
                 model="nova-2-phonecall",
                 language="en-US",
@@ -91,8 +158,8 @@ class Assistant(agents.Agent):
                 punctuate=True
             ),
             llm=openai.LLM(
-                model="gpt-4o-mini",
-                temperature=0.3
+                model=model_name,
+                temperature=temperature
             ),
             tts=cartesia.TTS(
                 model="sonic-2-2025-03-07",
@@ -102,6 +169,7 @@ class Assistant(agents.Agent):
             turn_detection=EnglishModel(),
         )
         self.room = room
+        self.agent_config = agent_config
 
     async def on_enter(self):
         logger.info(f"on_enter: Agent started now for user: {self.session.userdata.user_id}")
@@ -121,11 +189,16 @@ class Assistant(agents.Agent):
         )
         await self.update_chat_ctx(chat_ctx)
 
+        # Get greeting from agent configuration
+        agent_name = self.agent_config.get("agent_name", "Customer Service Agent")
+        conversation_settings = self.agent_config.get("conversation_settings", {})
+        greeting_message = conversation_settings.get("greeting_message",
+                                                   f"Hello! Thank you for calling. This is {agent_name}. How can I help you today?")
+
         # Inbound call greeting
         await self.session.generate_reply(
             instructions=textwrap.dedent(f"""
-                You are Jack from Floor Covering International.
-                Start the conversation immediately with: "Hi, thank you for calling Floor Covering International. My name is Jack. How can I help you today?"
+                Start the conversation immediately with: "{greeting_message}"
                 Wait for their response before proceeding.
             """),
             allow_interruptions=True
@@ -413,6 +486,11 @@ async def entrypoint(ctx: agents.JobContext):
 
     logger.info(f"Joining room: {ctx.room.name}")
 
+    # Fetch agent configuration from database
+    logger.info("Fetching agent configuration from database...")
+    agent_config = await fetch_agent_config(ctx.room.name)
+    logger.info(f"Agent config retrieved: {agent_config.get('agent_name', 'Unknown')}")
+
     # For inbound calls, always use audio mode
     modalities = metadata.get("modalities", "text_and_audio")
     if is_sip_session or modalities != "text_only":
@@ -424,7 +502,7 @@ async def entrypoint(ctx: agents.JobContext):
 
     await session_obj.start(
         room=ctx.room,
-        agent=Assistant(room=ctx.room, is_sip_session=is_sip_session),
+        agent=Assistant(room=ctx.room, agent_config=agent_config, is_sip_session=is_sip_session),
         room_input_options=room_input_options,
         room_output_options=room_output_options
     )
