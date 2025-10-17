@@ -80,48 +80,43 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to start background follow-up processor: {str(e)}")
 
-    # Start inbound calling agent worker directly in process
-    agent_name = os.getenv("AGENT_NAME")
-    if agent_name == "inbound_raq":
-        logger.info("Starting inbound calling agent worker...")
+    # Start inbound calling agent worker in a background thread
+    logger.info("Starting inbound calling agent worker in background thread...")
+    try:
+        import threading
+        import sys
+        agent_path = os.path.join(os.path.dirname(__file__), "agent", "src")
+        sys.path.insert(0, agent_path)
+        from agent import entrypoint
+        from livekit import agents
 
-        try:
-            # Import agent modules directly
-            import sys
-            import os
-            agent_path = os.path.join(os.path.dirname(__file__), "agent", "src")
-            sys.path.insert(0, agent_path)
+        def run_agent_worker_in_thread():
+            """Function to run the agent worker in a separate thread."""
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
 
-            # Import the agent entrypoint
-            from agent import entrypoint
-            from livekit import agents
-
-            async def run_agent_worker():
-                """Background task to run the inbound calling agent worker"""
+            async def run_worker():
+                """Coroutine to run the agent worker."""
                 try:
-                    logger.info("Connecting to LiveKit as inbound_raq agent...")
-
-                    # Create worker options
+                    logger.info("Connecting to LiveKit as inbound agent...")
                     worker_opts = agents.WorkerOptions(
                         entrypoint_fnc=entrypoint,
-                        agent_name="inbound_raq"
+                        agent_name="inbound_raq"  # Agent name for identification
                     )
-
-                    # Start the agent worker
                     worker = agents.Worker(worker_opts)
                     await worker.run()
-
                 except Exception as e:
-                    logger.error(f"Error in agent worker: {str(e)}")
+                    logger.error(f"Error in agent worker thread: {str(e)}")
 
-            # Start the agent worker as an asyncio task
-            asyncio.create_task(run_agent_worker())
-            logger.info("Inbound calling agent worker started successfully as asyncio task")
+            loop.run_until_complete(run_worker())
 
-        except Exception as e:
-            logger.error(f"Failed to start inbound calling agent worker: {str(e)}")
-    else:
-        logger.info(f"Agent worker not started (AGENT_NAME={agent_name})")
+        # Create and start the background thread
+        agent_thread = threading.Thread(target=run_agent_worker_in_thread, daemon=True)
+        agent_thread.start()
+        logger.info("Inbound calling agent worker thread started successfully.")
+
+    except Exception as e:
+        logger.error(f"Failed to start inbound calling agent worker thread: {str(e)}")
 
 # Include API routers
 app.include_router(leads_router)
