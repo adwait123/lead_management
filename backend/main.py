@@ -80,47 +80,43 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to start background follow-up processor: {str(e)}")
 
-    # Start inbound calling agent worker
+    # Start inbound calling agent worker directly in process
     agent_name = os.getenv("AGENT_NAME")
     if agent_name == "inbound_raq":
         logger.info("Starting inbound calling agent worker...")
 
         try:
-            import subprocess
-            import threading
+            # Import agent modules directly
+            import sys
+            import os
+            agent_path = os.path.join(os.path.dirname(__file__), "agent", "src")
+            sys.path.insert(0, agent_path)
 
-            def run_agent_worker():
-                """Background thread to run the inbound calling agent worker"""
+            # Import the agent entrypoint
+            from agent import entrypoint
+            from livekit import agents
+
+            async def run_agent_worker():
+                """Background task to run the inbound calling agent worker"""
                 try:
-                    # Change to agent directory and run the agent
-                    agent_dir = os.path.join(os.path.dirname(__file__), "agent")
-                    cmd = ["python", "src/agent.py", "start"]
+                    logger.info("Connecting to LiveKit as inbound_raq agent...")
 
-                    # Run the agent worker process
-                    process = subprocess.Popen(
-                        cmd,
-                        cwd=agent_dir,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True
+                    # Create worker options
+                    worker_opts = agents.WorkerOptions(
+                        entrypoint_fnc=entrypoint,
+                        agent_name="inbound_raq"
                     )
 
-                    logger.info(f"Agent worker process started with PID: {process.pid}")
-
-                    # Monitor the process
-                    stdout, stderr = process.communicate()
-                    if process.returncode != 0:
-                        logger.error(f"Agent worker failed: {stderr}")
-                    else:
-                        logger.info("Agent worker completed successfully")
+                    # Start the agent worker
+                    worker = agents.Worker(worker_opts)
+                    await worker.run()
 
                 except Exception as e:
-                    logger.error(f"Error starting agent worker process: {str(e)}")
+                    logger.error(f"Error in agent worker: {str(e)}")
 
-            # Start the agent worker in a background thread
-            agent_thread = threading.Thread(target=run_agent_worker, daemon=True)
-            agent_thread.start()
-            logger.info("Inbound calling agent worker thread started successfully")
+            # Start the agent worker as an asyncio task
+            asyncio.create_task(run_agent_worker())
+            logger.info("Inbound calling agent worker started successfully as asyncio task")
 
         except Exception as e:
             logger.error(f"Failed to start inbound calling agent worker: {str(e)}")
