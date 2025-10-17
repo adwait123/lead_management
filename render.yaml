@@ -7,6 +7,12 @@ services:
     envVars:
       - key: OPENAI_API_KEY
         sync: false
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
       - key: DATABASE_URL
         value: sqlite:///./ailead.db
       - key: CORS_ORIGINS
