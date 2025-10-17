@@ -802,8 +802,9 @@ async def handle_twilio_webhook(
         return Response(content=str(response), media_type="application/xml")
 
     # Route to LiveKit SIP trunk - LiveKit will handle room creation and agent dispatch
-    # Using the configured SIP trunk endpoint
-    sip_uri = f"sip:{caller_phone}@1w7n1n4d64r.sip.livekit.cloud;transport=tcp"
+    # Format SIP URI to route TO LiveKit, not through LiveKit to the caller
+    # LiveKit will use caller info from SIP headers to create room: call-<caller-number>
+    sip_uri = f"sip:1w7n1n4d64r.sip.livekit.cloud;transport=tcp"
 
     # Use Dial + Sip to route to LiveKit SIP trunk
     dial = Dial(timeout=30)
