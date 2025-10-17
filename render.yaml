@@ -2,7 +2,7 @@ services:
   - type: web
     name: ailead-backend
     env: python
-    buildCommand: "pip install --upgrade pip && pip install -r backend/requirements.txt && python3 backend/agent/src/agent.py download-files"
+    buildCommand: "pip install --upgrade pip && pip install -r backend/requirements.txt && python3 backend/download_models.py"
     startCommand: "cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: OPENAI_API_KEY
