@@ -413,9 +413,9 @@ async def entrypoint(ctx: agents.JobContext):
 
     logger.info(f"Joining room: {ctx.room.name}")
 
-    # For outbound calls, always use audio mode
+    # For inbound calls, always use audio mode
     modalities = metadata.get("modalities", "text_and_audio")
-    if is_outbound_call or modalities != "text_only":
+    if is_sip_session or modalities != "text_only":
         room_input_options = agents.RoomInputOptions(text_enabled=True, audio_enabled=True)
         room_output_options = agents.RoomOutputOptions(transcription_enabled=True, audio_enabled=True)
     else:

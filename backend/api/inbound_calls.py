@@ -16,6 +16,8 @@ from models.database import get_db
 from models.inbound_call import InboundCall
 from models.lead import Lead
 from models.agent import Agent
+from models.agent_session import AgentSession
+from models.message import Message
 from models.schemas import (
     InboundCallCreateSchema,
     InboundCallUpdateSchema,
@@ -30,6 +32,267 @@ from models.schemas import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/inbound-calls", tags=["inbound-calls"])
+
+
+# Helper functions for lead management
+def validate_phone_number(phone: str) -> Optional[str]:
+    """
+    Validate and format phone number for inbound calls.
+    """
+    import re
+
+    # Remove all non-digit characters
+    digits_only = re.sub(r'[^\d]', '', phone)
+
+    # Handle US numbers
+    if len(digits_only) == 10:
+        # Add US country code
+        formatted = f"+1{digits_only}"
+    elif len(digits_only) == 11 and digits_only.startswith('1'):
+        # Already has US country code
+        formatted = f"+{digits_only}"
+    else:
+        return None
+
+    # Validate US phone number format
+    if re.match(r'^\+1[2-9]\d{2}[2-9]\d{6}$', formatted):
+        return formatted
+    else:
+        return None
+
+
+async def find_or_create_lead(phone_number: str, db: Session) -> Optional[Lead]:
+    """
+    Find existing lead by phone number or create a new one.
+    """
+    try:
+        # Validate phone number
+        validated_phone = validate_phone_number(phone_number)
+        if not validated_phone:
+            logger.warning(f"Invalid phone number: {phone_number}")
+            validated_phone = phone_number  # Use as-is if validation fails
+
+        # Try to find existing lead by phone
+        existing_lead = db.query(Lead).filter(Lead.phone == validated_phone).first()
+        if existing_lead:
+            logger.info(f"Found existing lead {existing_lead.id} for phone {validated_phone}")
+            # Update status to contacted if it was new
+            if existing_lead.status == "new":
+                existing_lead.status = "contacted"
+                db.commit()
+            return existing_lead
+
+        # Create new lead for unknown caller
+        logger.info(f"Creating new lead for unknown caller {validated_phone}")
+
+        # Extract area code for basic geographic info
+        area_code = validated_phone[2:5] if len(validated_phone) >= 5 else "000"
+
+        new_lead = Lead(
+            name=f"Caller {area_code}",  # Placeholder name
+            email=f"caller_{area_code}@inbound.placeholder",  # Required field - placeholder
+            phone=validated_phone,
+            status="new",
+            source="phone_call",  # New source type for inbound calls
+            service_requested="Phone inquiry",
+            notes=[{
+                "id": 1,
+                "content": f"Lead created from inbound call to +17622437375",
+                "timestamp": datetime.utcnow().isoformat(),
+                "author": "System"
+            }],
+            interaction_history=[{
+                "id": 1,
+                "type": "inbound_call",
+                "content": f"Received inbound call from {validated_phone}",
+                "timestamp": datetime.utcnow().isoformat(),
+                "agent_id": None
+            }]
+        )
+
+        db.add(new_lead)
+        db.commit()
+        db.refresh(new_lead)
+
+        logger.info(f"Created new lead {new_lead.id} for phone {validated_phone}")
+        return new_lead
+
+    except Exception as e:
+        logger.error(f"Error finding/creating lead for {phone_number}: {str(e)}")
+        return None
+
+
+async def create_agent_session_for_call(call: InboundCall, lead: Lead, agent: Agent, db: Session) -> bool:
+    """
+    Create an agent session for conversation tracking.
+    """
+    try:
+        # Check if session already exists
+        existing_session = db.query(AgentSession).filter(
+            AgentSession.lead_id == lead.id,
+            AgentSession.agent_id == agent.id,
+            AgentSession.session_status == "active"
+        ).first()
+
+        if existing_session:
+            logger.info(f"Using existing agent session {existing_session.id}")
+            return True
+
+        # Create new agent session
+        session = AgentSession(
+            agent_id=agent.id,
+            lead_id=lead.id,
+            trigger_type="inbound_call",
+            session_status="active",
+            session_goal="Handle inbound call inquiry and qualify lead",
+            initial_context={
+                "call_id": call.id,
+                "call_type": "inbound",
+                "caller_phone": call.caller_phone_number,
+                "inbound_number": call.inbound_phone_number,
+                "room_name": call.room_name,
+                "routing_method": "livekit_sip_trunk"
+            },
+            session_metadata={
+                "source": "inbound_call",
+                "call_initiated_at": call.received_at.isoformat(),
+                "agent_type": agent.type
+            },
+            auto_timeout_hours=2,  # Shorter timeout for phone calls
+            max_message_count=50   # Reasonable limit for voice conversations
+        )
+
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+
+        # Create initial system message
+        system_message = Message.create_system_message(
+            agent_session_id=session.id,
+            lead_id=lead.id,
+            content=f"Inbound call started from {call.caller_phone_number}",
+            metadata={
+                "call_id": call.id,
+                "room_name": call.room_name,
+                "event_type": "call_started"
+            }
+        )
+
+        db.add(system_message)
+        db.commit()
+
+        logger.info(f"Created agent session {session.id} for inbound call {call.id}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to create agent session for call {call.id}: {str(e)}")
+        return False
+
+
+async def trigger_lead_workflow_for_call(lead: Lead, db: Session) -> bool:
+    """
+    Trigger the existing workflow system for new leads.
+    """
+    try:
+        # Import here to avoid circular imports
+        from services.workflow_service import WorkflowService
+
+        workflow_service = WorkflowService(db)
+        workflow_service.handle_lead_created(
+            lead_id=lead.id,
+            source=lead.source,
+            form_data={
+                "phone": lead.phone,
+                "service_requested": lead.service_requested,
+                "trigger_type": "inbound_call"
+            }
+        )
+
+        logger.info(f"Triggered workflow for new lead {lead.id}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to trigger workflow for lead {lead.id}: {str(e)}")
+        return False
+
+
+async def process_inbound_call_background(call_id: int):
+    """
+    Background task to process inbound call - create lead and agent session
+    after TwiML response is sent to avoid blocking the webhook response.
+    """
+    from models.database import SessionLocal
+    db = SessionLocal()
+
+    try:
+        # Get the inbound call record
+        call = db.query(InboundCall).filter(InboundCall.id == call_id).first()
+        if not call:
+            logger.error(f"Inbound call {call_id} not found for background processing")
+            return
+
+        logger.info(f"Background processing inbound call {call_id} from {call.caller_phone_number}")
+
+        # Step 1: Find or create lead
+        lead = await find_or_create_lead(call.caller_phone_number, db)
+        if not lead:
+            logger.error(f"Failed to create/find lead for {call.caller_phone_number}")
+            call.call_status = "failed"
+            call.error_message = "Failed to create lead"
+            db.commit()
+            return
+
+        # Step 2: Find active inbound agent
+        inbound_agent = db.query(Agent).filter(
+            Agent.type == "inbound",
+            Agent.is_active == True
+        ).first()
+
+        if not inbound_agent:
+            logger.warning(f"No active inbound agents available for call {call_id}")
+            # Don't fail the call, just continue without agent assignment
+        else:
+            # Step 3: Update call with lead and agent information
+            call.agent_id = inbound_agent.id
+
+            # Step 4: Create agent session for conversation tracking
+            session_created = await create_agent_session_for_call(call, lead, inbound_agent, db)
+            if not session_created:
+                logger.warning(f"Failed to create agent session for call {call_id}")
+                # Not critical - continue processing
+
+        # Always update the call with lead ID regardless of agent availability
+        call.lead_id = lead.id
+
+        # Update call metadata to include lead info
+        current_metadata = call.call_metadata or {}
+        current_metadata.update({
+            "lead_id": lead.id,
+            "lead_name": lead.name,
+            "lead_phone": lead.phone,
+            "lead_status": lead.status,
+            "lead_source": lead.source,
+            "background_processed": True,
+            "processed_at": datetime.utcnow().isoformat()
+        })
+        call.call_metadata = current_metadata
+
+        db.commit()
+
+        # Step 5: Trigger workflow for new lead (if applicable)
+        if lead.status == "new":
+            await trigger_lead_workflow_for_call(lead, db)
+
+        logger.info(f"Successfully background processed inbound call {call_id} - Lead: {lead.id}, Agent: {call.agent_id}")
+
+    except Exception as e:
+        logger.error(f"Error in background processing of inbound call {call_id}: {str(e)}")
+        if call:
+            call.call_status = "failed"
+            call.error_message = f"Background processing error: {str(e)}"
+            db.commit()
+    finally:
+        db.close()
 
 
 @router.get("/", response_model=InboundCallListResponseSchema)
@@ -548,6 +811,10 @@ async def handle_twilio_webhook(
     response.append(dial)
 
     logger.info(f"Generated TwiML routing to LiveKit SIP trunk: {sip_uri} for call {call_id}")
+
+    # Add background task to process lead creation and agent session after TwiML response
+    # This ensures we don't delay the webhook response to Twilio
+    background_tasks.add_task(process_inbound_call_background, call_id)
 
     return Response(content=str(response), media_type="application/xml")
 
