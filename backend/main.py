@@ -98,10 +98,26 @@ async def startup_event():
             async def run_worker():
                 """Coroutine to run the agent worker."""
                 try:
+                    # Read LiveKit credentials from environment
+                    livekit_url = os.getenv("LIVEKIT_URL")
+                    livekit_api_key = os.getenv("LIVEKIT_API_KEY")
+                    livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
+
+                    # Log the credentials to verify they are loaded
+                    logger.info(f"LIVEKIT_URL: {livekit_url}")
+                    logger.info(f"LIVEKIT_API_KEY: {livekit_api_key}")
+
+                    if not all([livekit_url, livekit_api_key, livekit_api_secret]):
+                        logger.error("LiveKit credentials not found in environment variables.")
+                        return
+
                     logger.info("Connecting to LiveKit as inbound agent...")
                     worker_opts = agents.WorkerOptions(
                         entrypoint_fnc=entrypoint,
-                        agent_name="inbound_raq"  # Agent name for identification
+                        agent_name="inbound_raq",  # Agent name for identification
+                        ws_url=livekit_url,
+                        api_key=livekit_api_key,
+                        api_secret=livekit_api_secret
                     )
                     worker = agents.Worker(worker_opts)
                     await worker.run()
