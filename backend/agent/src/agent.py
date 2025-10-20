@@ -35,7 +35,10 @@ async def fetch_agent_config(room_name: str) -> dict:
         call_id = None
 
         # Try to extract phone number from room name for SIP calls
-        phone_match = re.search(r'call-(\d+)', room_name)
+        # Handle both formats: call-12014860463 and call_+12014860463_randomstring
+        phone_match = re.search(r'call[-_]\+?([0-9]+)', room_name)
+        phone_number = None
+
         if phone_match:
             phone_digits = phone_match.group(1)
             # Add country code if not present
@@ -63,6 +66,16 @@ async def fetch_agent_config(room_name: str) -> dict:
 
         if not call_id:
             logger.warning(f"Could not determine call_id from room: {room_name}")
+
+            # If this is a SIP call, create lead directly since webhook was bypassed
+            if phone_match and phone_number:
+                logger.info(f"Creating lead directly for SIP call: {phone_number}")
+                lead_created = await create_lead_for_sip_call(phone_number, room_name, api_base_url)
+                if lead_created:
+                    logger.info(f"Successfully created lead for {phone_number}")
+                else:
+                    logger.warning(f"Failed to create lead for {phone_number}")
+
             return get_default_agent_config()
 
         # Fetch agent configuration for this call
@@ -80,6 +93,39 @@ async def fetch_agent_config(room_name: str) -> dict:
     except Exception as e:
         logger.error(f"Error fetching agent config: {str(e)}")
         return get_default_agent_config()
+
+
+async def create_lead_for_sip_call(phone_number: str, room_name: str, api_base_url: str) -> bool:
+    """
+    Create a lead directly for SIP calls since webhook was bypassed
+    """
+    try:
+        # Create lead via backend API
+        lead_data = {
+            "caller_phone_number": phone_number,
+            "inbound_phone_number": "+17622437375",
+            "call_status": "received",
+            "call_metadata": {
+                "room_name": room_name,
+                "routing_method": "direct_sip",
+                "agent_created": True
+            }
+        }
+
+        async with aiohttp.ClientSession() as session:
+            url = f"{api_base_url}/api/inbound-calls/"
+            async with session.post(url, json=lead_data) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    logger.info(f"Created inbound call record: {data.get('id')}")
+                    return True
+                else:
+                    logger.error(f"Failed to create lead: {response.status}")
+                    return False
+
+    except Exception as e:
+        logger.error(f"Error creating lead for SIP call: {str(e)}")
+        return False
 
 
 def get_default_agent_config() -> dict:
