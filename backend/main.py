@@ -52,10 +52,36 @@ app.add_middleware(
 # Create database tables on startup
 @app.on_event("startup")
 async def startup_event():
+    logger = logging.getLogger(__name__)
+
+    # Validate required environment variables for inbound calling
+    required_env_vars = {
+        "LIVEKIT_URL": "LiveKit server URL for voice agent communication",
+        "LIVEKIT_API_KEY": "LiveKit API key for authentication",
+        "LIVEKIT_API_SECRET": "LiveKit API secret for authentication",
+        "SIP_INBOUND_TRUNK_ID": "Twilio SIP trunk ID for inbound calls",
+        "OPENAI_API_KEY": "OpenAI API key for AI language model",
+        "DEEPGRAM_API_KEY": "Deepgram API key for speech-to-text",
+        "CARTESIA_API_KEY": "Cartesia API key for text-to-speech"
+    }
+
+    missing_vars = []
+    for var_name, description in required_env_vars.items():
+        if not os.getenv(var_name):
+            missing_vars.append(f"  - {var_name}: {description}")
+
+    if missing_vars:
+        logger.error("❌ Missing required environment variables for inbound calling:")
+        for var in missing_vars:
+            logger.error(var)
+        logger.error("⚠️  Inbound calling functionality will not work properly!")
+        logger.error("💡 Please set these variables in your .env file or environment")
+    else:
+        logger.info("✅ All required environment variables are configured for inbound calling")
+
     create_tables()
 
     # Start background follow-up processor
-    logger = logging.getLogger(__name__)
     logger.info("Starting background follow-up task processor...")
 
     try:

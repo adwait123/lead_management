@@ -472,7 +472,7 @@ async def create_inbound_call(
     db.refresh(inbound_call)
 
     # Process the inbound call in background
-    background_tasks.add_task(process_inbound_call, inbound_call.id)
+    background_tasks.add_task(process_inbound_call_background, inbound_call.id)
 
     try:
         return InboundCallResponseSchema.model_validate(inbound_call)
@@ -802,9 +802,8 @@ async def handle_twilio_webhook(
         return Response(content=str(response), media_type="application/xml")
 
     # Route to LiveKit SIP trunk - LiveKit will handle room creation and agent dispatch
-    # Format SIP URI to route TO LiveKit, not through LiveKit to the caller
-    # LiveKit will use caller info from SIP headers to create room: call-<caller-number>
-    sip_uri = f"sip:1w7n1n4d64r.sip.livekit.cloud;transport=tcp"
+    # Try basic SIP URI format without transport parameter
+    sip_uri = f"sip:1w7n1n4d64r.sip.livekit.cloud"
 
     # Use Dial + Sip to route to LiveKit SIP trunk
     dial = Dial(timeout=30)
