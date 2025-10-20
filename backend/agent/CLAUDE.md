@@ -7,7 +7,7 @@ Python-based voice assistant that handles real-time conversations using LiveKit 
 - **Framework**: LiveKit Agents SDK
 - **Speech**: Deepgram (STT), Cartesia/OpenAI (TTS)  
 - **AI**: OpenAI GPT with tonies® support knowledge
-- **Audio**: Silero noise cancellation
+- **Audio**: Basic audio processing (noise cancellation removed to reduce memory footprint)
 
 ## Setup & Development
 

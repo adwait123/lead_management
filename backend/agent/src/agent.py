@@ -11,8 +11,7 @@ from dataclasses import asdict
 import asyncio
 
 from livekit import agents, rtc
-from livekit.plugins import deepgram, openai, cartesia, silero
-from livekit.plugins.turn_detector.english import EnglishModel
+from livekit.plugins import deepgram, openai, cartesia
 
 from utils import session, tracing, fetching, common
 
@@ -165,8 +164,6 @@ class Assistant(agents.Agent):
                 model="sonic-2-2025-03-07",
                 voice="146485fd-8736-41c7-88a8-7cdd0da34d84"
             ),
-            vad=silero.VAD.load(),
-            turn_detection=EnglishModel(),
         )
         self.room = room
         self.agent_config = agent_config
