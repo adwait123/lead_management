@@ -106,59 +106,9 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to start background follow-up processor: {str(e)}")
 
-    # Start inbound calling agent worker in a background thread
-    logger.info("Starting inbound calling agent worker in background thread...")
-    try:
-        import threading
-        import sys
-        agent_path = os.path.join(os.path.dirname(__file__), "agent", "src")
-        sys.path.insert(0, agent_path)
-        from agent import entrypoint
-        from livekit import agents
-
-        def run_agent_worker_in_thread():
-            """Function to run the agent worker in a separate thread."""
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            async def run_worker():
-                """Coroutine to run the agent worker."""
-                try:
-                    # Read LiveKit credentials from environment
-                    livekit_url = os.getenv("LIVEKIT_URL")
-                    livekit_api_key = os.getenv("LIVEKIT_API_KEY")
-                    livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
-
-                    # Log the credentials to verify they are loaded
-                    logger.info(f"LIVEKIT_URL: {livekit_url}")
-                    logger.info(f"LIVEKIT_API_KEY: {livekit_api_key}")
-
-                    if not all([livekit_url, livekit_api_key, livekit_api_secret]):
-                        logger.error("LiveKit credentials not found in environment variables.")
-                        return
-
-                    logger.info("Connecting to LiveKit as inbound agent...")
-                    worker_opts = agents.WorkerOptions(
-                        entrypoint_fnc=entrypoint,
-                        agent_name="inbound_raq",  # Agent name for identification
-                        ws_url=livekit_url,
-                        api_key=livekit_api_key,
-                        api_secret=livekit_api_secret
-                    )
-                    worker = agents.Worker(worker_opts)
-                    await worker.run()
-                except Exception as e:
-                    logger.error(f"Error in agent worker thread: {str(e)}")
-
-            loop.run_until_complete(run_worker())
-
-        # Create and start the background thread
-        agent_thread = threading.Thread(target=run_agent_worker_in_thread, daemon=True)
-        agent_thread.start()
-        logger.info("Inbound calling agent worker thread started successfully.")
-
-    except Exception as e:
-        logger.error(f"Failed to start inbound calling agent worker thread: {str(e)}")
+    # Note: Inbound calling agent now runs as a separate service (ailead-agent)
+    # No need to start agent worker in backend service thread
+    logger.info("✅ Backend startup complete - inbound calling handled by separate agent service")
 
 # Include API routers
 app.include_router(leads_router)
