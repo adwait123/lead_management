@@ -9,6 +9,7 @@ import { Settings } from './pages/Settings'
 import { Calendar } from './pages/Calendar'
 import { Conversations } from './pages/Conversations'
 import { LeadChat } from './pages/LeadChat'
+import { Billing } from './pages/Billing'
 import { HatchAgentWizard } from './components/wizard/HatchAgentWizard'
 import { HatchAgentConfigSimple } from './components/wizard/HatchAgentConfigSimple'
 import { HatchAgentEdit } from './components/wizard/HatchAgentEdit'
@@ -28,6 +29,7 @@ function App() {
         <Route path="/workflows" element={<Layout><Workflows /></Layout>} />
         <Route path="/integrations" element={<Layout><Integrations /></Layout>} />
         <Route path="/calendar" element={<Layout><Calendar /></Layout>} />
+        <Route path="/billing" element={<Layout><Billing /></Layout>} />
         <Route path="/settings" element={<Layout><Settings /></Layout>} />
       </Routes>
     </BrowserRouter>

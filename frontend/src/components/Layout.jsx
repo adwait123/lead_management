@@ -7,6 +7,7 @@ import {
   Blocks,
   MessageCircle,
   Calendar as CalendarIcon,
+  CreditCard,
   Settings
 } from 'lucide-react'
 
@@ -21,6 +22,7 @@ export function Layout({ children }) {
     { name: 'Calendar', href: '/calendar', icon: CalendarIcon },
     { name: 'Workflows', href: '/workflows', icon: Workflow },
     { name: 'Integrations', href: '/integrations', icon: Blocks },
+    { name: 'Billing', href: '/billing', icon: CreditCard },
   ]
 
   const isActive = (path) => {
