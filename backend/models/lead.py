@@ -1,10 +1,18 @@
 """
 Lead model definition
 """
-from sqlalchemy import Column, Integer, String, DateTime, Text, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Enum
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
+import enum
 from .database import Base
+
+class LeadStatus(enum.Enum):
+    """Lead status enumeration"""
+    new = "new"
+    in_progress = "in_progress"
+    closed = "closed"
+    completed = "completed"
 
 class Lead(Base):
     __tablename__ = "leads"
@@ -22,8 +30,8 @@ class Lead(Base):
 
     # Lead details
     service_requested = Column(String(255), nullable=True)
-    status = Column(String(50), nullable=False, default="new", index=True)
-    # Status options: new, contacted, qualified, won, lost
+    status = Column(Enum(LeadStatus), nullable=False, default=LeadStatus.new, index=True)
+    # Status options: new, in_progress, closed, completed
 
     source = Column(String(100), nullable=False, index=True)
     # Source options: Facebook Ads, Google Ads, Website, Referral
@@ -59,7 +67,7 @@ class Lead(Base):
             "address": self.address,
             "external_id": self.external_id,
             "service_requested": self.service_requested,
-            "status": self.status,
+            "status": self.status.value if isinstance(self.status, LeadStatus) else self.status,
             "source": self.source,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
