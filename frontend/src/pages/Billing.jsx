@@ -5,7 +5,7 @@ export function Billing() {
   // Mock subscription data
   const subscription = {
     plan: 'Pro Plan',
-    price: '$99',
+    price: '$1500',
     billing: 'monthly',
     status: 'active',
     nextBilling: 'December 20, 2024'
@@ -13,9 +13,9 @@ export function Billing() {
 
   // Mock usage data
   const usage = {
-    agents: { used: 3, limit: 10 },
-    leads: { used: 45, limit: 1000 },
-    callMinutes: { used: 120, limit: 500 }
+    agents: { used: 3, limit: 25 },
+    leads: { used: 45, limit: 5000 },
+    callMinutes: { used: 120, limit: 2000 }
   }
 
   // Mock invoice data
@@ -23,28 +23,28 @@ export function Billing() {
     {
       id: 'INV-2024-001',
       date: 'Nov 20, 2024',
-      amount: '$99.00',
+      amount: '$1,500.00',
       status: 'paid',
       downloadUrl: '#'
     },
     {
       id: 'INV-2024-002',
       date: 'Oct 20, 2024',
-      amount: '$99.00',
+      amount: '$1,500.00',
       status: 'paid',
       downloadUrl: '#'
     },
     {
       id: 'INV-2024-003',
       date: 'Sep 20, 2024',
-      amount: '$99.00',
+      amount: '$1,500.00',
       status: 'paid',
       downloadUrl: '#'
     },
     {
       id: 'INV-2024-004',
       date: 'Aug 20, 2024',
-      amount: '$99.00',
+      amount: '$1,500.00',
       status: 'failed',
       downloadUrl: '#'
     }

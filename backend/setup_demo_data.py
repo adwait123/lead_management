@@ -11,8 +11,8 @@ import sys
 import os
 from datetime import datetime, timedelta
 
-# Base URL for API calls
-BASE_URL = "https://lead-management-staging-backend.onrender.com"
+# Base URL for API calls - use localhost when running manually from the server
+BASE_URL = "http://localhost:8000"
 
 def check_api_connection():
     """Check if the API is available"""

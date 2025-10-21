@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Torkin - Free Consultation</title>
+    <title>Acme Pest Control - Free Inspection</title>
     <link rel="stylesheet" href="torkin_demo.css">
 </head>
 <body>
     <header>
         <nav>
-            <div class="logo">Torkin</div>
+            <div class="logo">Acme Pest Control</div>
             <ul>
                 <li><a href="#">Residential</a></li>
                 <li><a href="#">Business</a></li>
@@ -20,7 +20,7 @@
             </ul>
             <div class="header-buttons">
                 <a href="#" class="login-btn">LOG IN</a>
-                <a href="#" class="phone-btn">1-800-123-4567</a>
+                <a href="#" class="phone-btn">+1 (762) 243-7375</a>
             </div>
         </nav>
         <div class="hero-image">
@@ -28,33 +28,36 @@
         </div>
     </header>
     <div class="form-container">
-        <h2>Schedule Your FREE In-Home Consultation</h2>
-        <p>A Torkin design expert will call you within minutes to confirm your appointment</p>
-        <form id="consultation-form">
-            <input type="text" id="first-name" name="first-name" placeholder="First Name" required>
-            <input type="text" id="last-name" name="last-name" placeholder="Last Name" required>
-            <input type="tel" id="phone" name="phone" placeholder="Phone Number" required>
-            <input type="email" id="email" name="email" placeholder="Email Address" required>
-            <input type="text" id="address" name="address" placeholder="Street Address" required>
+        <h2>Schedule Your FREE Pest Inspection</h2>
+        <p>An Acme Pest Control specialist will call you within minutes to confirm your appointment</p>
+        <form id="consultation-form" autocomplete="on">
+            <input type="text" id="first-name" name="first-name" placeholder="First Name" autocomplete="given-name" required>
+            <input type="text" id="last-name" name="last-name" placeholder="Last Name" autocomplete="family-name" required>
+            <input type="tel" id="phone" name="phone" placeholder="Phone Number" autocomplete="tel" required>
+            <input type="email" id="email" name="email" placeholder="Email Address" autocomplete="email" required>
+            <input type="text" id="address" name="address" placeholder="Street Address" autocomplete="street-address" required>
             <select id="service-interest" name="service-interest" required>
-                <option value="">Service Interest</option>
-                <option value="Kitchen Remodeling">Kitchen Remodeling</option>
-                <option value="Bathroom Renovation">Bathroom Renovation</option>
-                <option value="Home Addition">Home Addition</option>
-                <option value="Flooring">Flooring</option>
-                <option value="Other">Other</option>
+                <option value="">Pest Control Service Needed</option>
+                <option value="Termite Treatment">Termite Treatment & Inspection</option>
+                <option value="Rodent Control">Rodent Control (Mice, Rats)</option>
+                <option value="Cockroach Treatment">Cockroach Treatment</option>
+                <option value="Ant Control">Ant Control & Prevention</option>
+                <option value="General Pest Control">General Pest Control</option>
+                <option value="Emergency Service">Emergency Pest Service</option>
+                <option value="Preventive Treatment">Preventive Treatment Plan</option>
+                <option value="Other">Other Pest Issue</option>
             </select>
             <select id="project-timeline" name="project-timeline" required>
-                <option value="">Project Timeline</option>
-                <option value="ASAP">ASAP</option>
+                <option value="">Service Urgency</option>
+                <option value="Emergency">Emergency - Same Day</option>
+                <option value="This Week">This Week</option>
+                <option value="Within 2 Weeks">Within 2 Weeks</option>
                 <option value="Within 1 Month">Within 1 Month</option>
-                <option value="1-3 Months">1-3 Months</option>
-                <option value="3-6 Months">3-6 Months</option>
-                <option value="Just Exploring">Just Exploring</option>
+                <option value="Flexible">Flexible Timeline</option>
             </select>
-            <button type="submit">Schedule Now</button>
+            <button type="submit">Get FREE Inspection</button>
         </form>
-        <p class="form-footer">No obligation • Professional consultation • Hundreds of design samples</p>
+        <p class="form-footer">No obligation • Licensed professionals • 100% satisfaction guarantee</p>
     </div>
     <script src="torkin_demo.js"></script>
 </body>

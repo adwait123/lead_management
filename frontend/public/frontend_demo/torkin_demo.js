@@ -1,3 +1,22 @@
+// Add debugging for input issues
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Form loaded successfully');
+
+    // Test if inputs can receive focus and input
+    const inputs = document.querySelectorAll('#consultation-form input, #consultation-form select');
+    inputs.forEach((input, index) => {
+        input.addEventListener('focus', function() {
+            console.log(`Input ${index} (${input.id}) received focus`);
+        });
+        input.addEventListener('input', function() {
+            console.log(`Input ${index} (${input.id}) received input: ${input.value}`);
+        });
+        input.addEventListener('click', function() {
+            console.log(`Input ${index} (${input.id}) was clicked`);
+        });
+    });
+});
+
 document.getElementById('consultation-form').addEventListener('submit', function(event) {
     event.preventDefault();
 
@@ -21,7 +40,7 @@ document.getElementById('consultation-form').addEventListener('submit', function
         phone: phone,
         email: email,
         address: address,
-        source: 'torkin',
+        source: 'website',
         service_requested: serviceInterest,
         notes: [{ "content": `Project Timeline: ${projectTimeline}` }]
     };
@@ -44,7 +63,7 @@ document.getElementById('consultation-form').addEventListener('submit', function
     })
     .then(data => {
         console.log('Success:', data);
-        alert('Thank you for your submission! A Torkin design expert will call you within minutes.');
+        alert('Thank you for your submission! An Acme Pest Control specialist will call you within minutes to schedule your FREE inspection.');
         document.getElementById('consultation-form').reset();
     })
     .catch((error) => {
