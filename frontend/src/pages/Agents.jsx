@@ -96,29 +96,6 @@ export function Agents() {
 
   return (
     <div className="space-y-8">
-      {/* Prominent Inbound Phone Number Display - TOP PRIORITY */}
-      <Card className="bg-gradient-to-r from-green-500 to-blue-600 border-0 shadow-2xl">
-        <CardContent className="p-8">
-          <div className="text-center">
-            <div className="flex items-center justify-center mb-4">
-              <div className="bg-white p-4 rounded-full shadow-lg animate-pulse">
-                <Phone className="h-12 w-12 text-green-600" />
-              </div>
-            </div>
-            <h2 className="text-2xl font-bold text-white mb-2">🔥 CALL NOW FOR IMMEDIATE SERVICE 🔥</h2>
-            <div className="bg-white rounded-2xl p-6 shadow-xl inline-block">
-              <p className="text-6xl font-black text-green-600 mb-2 tracking-wider animate-pulse">
-                +1 (762) 243-7375
-              </p>
-              <p className="text-xl font-bold text-gray-800">Available 24/7 • Live AI Agent Ready</p>
-            </div>
-            <p className="text-lg font-semibold text-white mt-4 animate-bounce">
-              📞 Pest Control Emergency? We're here to help! 📞
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -243,6 +220,19 @@ export function Agents() {
                     </div>
                   </div>
                 </div>
+
+                {/* Phone Number for Inbound Agents */}
+                {agent.type === 'inbound' && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-4 w-4 text-blue-600" />
+                      <div>
+                        <p className="text-xs text-blue-600 font-medium">Direct Line</p>
+                        <p className="text-sm font-semibold text-blue-800">+1 (762) 243-7375</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Action Buttons */}
                 <div className="flex gap-2 pt-2">
