@@ -33,7 +33,7 @@ def create_inbound_agent():
             name="Inbound Call Agent",
             type="inbound",
             is_active=True,
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",
             temperature=0.7,
             max_tokens=500,
             prompt_template="""You are a friendly and professional customer service representative for AILead Services.

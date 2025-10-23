@@ -377,15 +377,76 @@ async def update_lead(lead_id: int, lead_data: LeadUpdateSchema, db: Session = D
 
 @router.delete("/{lead_id}")
 async def delete_lead(lead_id: int, db: Session = Depends(get_db)):
-    """Delete a lead"""
+    """Delete a lead and all related records safely"""
+    from sqlalchemy import text
+
+    # Check if lead exists
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    db.delete(lead)
-    db.commit()
+    deletion_summary = {
+        "lead_id": lead_id,
+        "lead_name": lead.name,
+        "deleted_records": {
+            "messages": 0,
+            "sessions": 0,
+            "calls": 0,
+            "lead": 0
+        },
+        "total_deleted": 0
+    }
 
-    return {"message": "Lead deleted successfully"}
+    try:
+        # Start transaction
+        db.begin()
+
+        # 1. Delete messages first (they reference lead_id)
+        messages_result = db.execute(
+            text("DELETE FROM messages WHERE lead_id = :lead_id"),
+            {"lead_id": lead_id}
+        )
+        deletion_summary["deleted_records"]["messages"] = messages_result.rowcount
+
+        # 2. Delete agent sessions
+        sessions_result = db.execute(
+            text("DELETE FROM agent_sessions WHERE lead_id = :lead_id"),
+            {"lead_id": lead_id}
+        )
+        deletion_summary["deleted_records"]["sessions"] = sessions_result.rowcount
+
+        # 3. Delete inbound calls
+        calls_result = db.execute(
+            text("DELETE FROM inbound_calls WHERE lead_id = :lead_id"),
+            {"lead_id": lead_id}
+        )
+        deletion_summary["deleted_records"]["calls"] = calls_result.rowcount
+
+        # 4. Finally delete the lead itself
+        lead_result = db.execute(
+            text("DELETE FROM leads WHERE id = :lead_id"),
+            {"lead_id": lead_id}
+        )
+        deletion_summary["deleted_records"]["lead"] = lead_result.rowcount
+
+        # Calculate total deleted records
+        deletion_summary["total_deleted"] = sum(deletion_summary["deleted_records"].values())
+
+        # Commit transaction
+        db.commit()
+
+        return {
+            "message": "Lead deleted successfully",
+            "summary": deletion_summary
+        }
+
+    except Exception as e:
+        # Rollback on error
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete lead: {str(e)}"
+        )
 
 @router.post("/{lead_id}/notes")
 async def add_note(lead_id: int, note_data: NoteCreateSchema, db: Session = Depends(get_db)):

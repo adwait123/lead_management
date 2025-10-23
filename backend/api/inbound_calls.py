@@ -573,7 +573,7 @@ async def get_agent_config_for_call(call_id: int, db: Session = Depends(get_db))
         "custom_personality_instructions": agent.custom_personality_instructions,
 
         # AI model settings
-        "model": agent.model or "gpt-3.5-turbo",
+        "model": agent.model or "gpt-4o-mini",
         "temperature": float(agent.temperature) if agent.temperature else 0.7,
         "max_tokens": agent.max_tokens or 500,
 
