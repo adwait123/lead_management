@@ -450,27 +450,52 @@ async def delete_lead(lead_id: int, db: Session = Depends(get_db)):
 
 @router.post("/admin/update-agent-models")
 async def update_agent_models(db: Session = Depends(get_db)):
-    """Admin endpoint to update existing agents from gpt-3.5-turbo to gpt-4o-mini"""
+    """Admin endpoint to update existing agents from gpt-3.5-turbo to gpt-4o-mini and update prompt to include Mike"""
     from sqlalchemy import text
 
     try:
-        # Update existing inbound agents with old model
+        # New prompt template with Mike introduction
+        new_prompt = """You are Mike, a friendly and professional customer service representative for AILead Services.
+
+When greeting callers, introduce yourself as Mike. Your role is to:
+1. Greet callers warmly saying "Hi, this is Mike from AILead Services" and identify their needs
+2. Gather basic information about their inquiry
+3. Provide helpful information about our services
+4. Schedule appointments or escalate to specialists when needed
+5. Ensure customer satisfaction
+
+Be conversational, empathetic, and solution-focused. Keep responses concise but thorough.
+
+Customer Context:
+- Name: {customer_name}
+- Phone: {customer_phone}
+- Previous interactions: {interaction_history}
+
+Current call information:
+- Caller phone: {caller_phone}
+- Inbound number: {inbound_phone}"""
+
+        # Update existing inbound agents with model and prompt
         result = db.execute(
             text("""
                 UPDATE agents
-                SET model = 'gpt-4o-mini'
-                WHERE type = 'inbound' AND model = 'gpt-3.5-turbo'
-            """)
+                SET model = 'gpt-4o-mini',
+                    prompt_template = :new_prompt
+                WHERE type = 'inbound'
+            """),
+            {"new_prompt": new_prompt}
         )
 
         updated_count = result.rowcount
         db.commit()
 
         return {
-            "message": "Agent models updated successfully",
+            "message": "Agent models and prompts updated successfully",
             "updated_agents": updated_count,
-            "old_model": "gpt-3.5-turbo",
-            "new_model": "gpt-4o-mini"
+            "updates": {
+                "model": "gpt-4o-mini",
+                "prompt": "Updated to introduce as Mike"
+            }
         }
 
     except Exception as e:

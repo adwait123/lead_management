@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
-import { Plus, Search, Filter, Eye, Phone, Mail, Building2, Calendar, Clock, User, MessageCircle } from 'lucide-react'
+import { Plus, Search, Filter, Eye, Phone, Mail, Building2, Calendar, Clock, User, MessageCircle, Trash2 } from 'lucide-react'
 import { leadsAPI } from '../lib/api.js'
 
 export function Leads() {
@@ -17,6 +17,8 @@ export function Leads() {
   const [pagination, setPagination] = useState({})
   const [selectedLead, setSelectedLead] = useState(null)
   const [showLeadDetail, setShowLeadDetail] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState({ show: false, lead: null })
+  const [deleting, setDeleting] = useState(false)
 
   const fetchLeads = async () => {
     try {
@@ -72,6 +74,39 @@ export function Leads() {
     } catch (err) {
       console.error('Error fetching lead details:', err)
     }
+  }
+
+  const handleDeleteClick = (lead) => {
+    setDeleteConfirm({ show: true, lead })
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirm.lead) return
+
+    try {
+      setDeleting(true)
+      await leadsAPI.delete(deleteConfirm.lead.id)
+
+      // Refresh the leads list
+      await fetchLeads()
+
+      // Close confirmation dialog
+      setDeleteConfirm({ show: false, lead: null })
+
+      // Show success message (you can add a toast notification here)
+      console.log(`Lead ${deleteConfirm.lead.name} deleted successfully`)
+
+    } catch (err) {
+      console.error('Error deleting lead:', err)
+      // Show error message (you can add a toast notification here)
+      alert('Failed to delete lead. Please try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirm({ show: false, lead: null })
   }
 
   const getStatusBadge = (status) => {
@@ -235,6 +270,15 @@ export function Leads() {
                                 Chat
                               </Button>
                             )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteClick(lead)}
+                              className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              Delete
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -426,6 +470,34 @@ export function Leads() {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Delete Lead</h3>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete "{deleteConfirm.lead?.name}"? This action will also delete all related messages, sessions, and call records. This cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button
+                variant="outline"
+                onClick={handleDeleteCancel}
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDeleteConfirm}
+                disabled={deleting}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {deleting ? 'Deleting...' : 'Delete Lead'}
+              </Button>
             </div>
           </div>
         </div>
