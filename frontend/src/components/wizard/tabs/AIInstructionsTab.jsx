@@ -366,7 +366,7 @@ Remember: You are representing a premium home services brand. Be confident, help
           summary: generationInput,
           agent_type: wizardData?.agentType || 'customer_service',
           industry: wizardData?.industry || 'general',
-          model: 'gpt-3.5-turbo'
+          model: 'gpt-4o-mini'
         })
       });
 
@@ -413,7 +413,7 @@ Remember: You are representing a premium home services brand. Be confident, help
         body: JSON.stringify({
           scenario_description: generationInput,
           business_context: businessContext,
-          model: 'gpt-3.5-turbo'
+          model: 'gpt-4o-mini'
         })
       });
 

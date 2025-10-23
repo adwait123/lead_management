@@ -122,7 +122,7 @@ export function AgentTestingModal({ isOpen, onClose, agentConfig, wizardData }) 
         body: JSON.stringify({
           message: userMessage,
           conversation_history: conversationHistory,
-          model: 'gpt-3.5-turbo',
+          model: 'gpt-4o-mini',
           temperature: 0.7
         })
       });

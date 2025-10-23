@@ -390,7 +390,7 @@ function HatchEditContent() {
       response_length: persona?.communicationMode === 'voice' ? 'brief' : 'moderate',
       prompt_template: instructions?.systemPrompt || agent?.prompt_template,
       custom_personality_instructions: persona?.additionalInstructions || '',
-      model: agent?.model || 'gpt-3.5-turbo',
+      model: agent?.model || 'gpt-4o-mini',
       temperature: agent?.temperature || '0.7',
       max_tokens: agent?.max_tokens || 500,
       enabled_tools: enabledTools,

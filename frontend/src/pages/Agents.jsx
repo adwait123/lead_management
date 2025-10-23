@@ -210,7 +210,7 @@ export function Agents() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-gray-500">Model:</span>
-                    <span className="font-medium">{agent.model}</span>
+                    <span className="font-medium">{agent.type === 'inbound' ? 'gpt-4o-mini' : agent.model}</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-gray-500">Personality:</span>
