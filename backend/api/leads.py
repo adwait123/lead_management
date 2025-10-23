@@ -399,9 +399,6 @@ async def delete_lead(lead_id: int, db: Session = Depends(get_db)):
     }
 
     try:
-        # Start transaction
-        db.begin()
-
         # 1. Delete messages first (they reference lead_id)
         messages_result = db.execute(
             text("DELETE FROM messages WHERE lead_id = :lead_id"),
@@ -433,7 +430,7 @@ async def delete_lead(lead_id: int, db: Session = Depends(get_db)):
         # Calculate total deleted records
         deletion_summary["total_deleted"] = sum(deletion_summary["deleted_records"].values())
 
-        # Commit transaction
+        # Commit transaction (FastAPI manages the transaction)
         db.commit()
 
         return {
