@@ -448,6 +448,38 @@ async def delete_lead(lead_id: int, db: Session = Depends(get_db)):
             detail=f"Failed to delete lead: {str(e)}"
         )
 
+@router.post("/admin/update-agent-models")
+async def update_agent_models(db: Session = Depends(get_db)):
+    """Admin endpoint to update existing agents from gpt-3.5-turbo to gpt-4o-mini"""
+    from sqlalchemy import text
+
+    try:
+        # Update existing inbound agents with old model
+        result = db.execute(
+            text("""
+                UPDATE agents
+                SET model = 'gpt-4o-mini'
+                WHERE type = 'inbound' AND model = 'gpt-3.5-turbo'
+            """)
+        )
+
+        updated_count = result.rowcount
+        db.commit()
+
+        return {
+            "message": "Agent models updated successfully",
+            "updated_agents": updated_count,
+            "old_model": "gpt-3.5-turbo",
+            "new_model": "gpt-4o-mini"
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update agent models: {str(e)}"
+        )
+
 @router.post("/{lead_id}/notes")
 async def add_note(lead_id: int, note_data: NoteCreateSchema, db: Session = Depends(get_db)):
     """Add a note to a lead"""
