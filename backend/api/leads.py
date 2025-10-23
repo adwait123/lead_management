@@ -7,6 +7,7 @@ from sqlalchemy import or_, and_
 from typing import Optional, List, Dict, Any
 import math
 import logging
+import json
 from datetime import datetime
 from pydantic import ValidationError
 
@@ -475,15 +476,27 @@ Current call information:
 - Caller phone: {caller_phone}
 - Inbound number: {inbound_phone}"""
 
-        # Update existing inbound agents with model and prompt
+        # New conversation settings with Mike greeting
+        new_conversation_settings = {
+            "greeting_message": "Hi, this is Mike from AILead Services. How can I help you today?",
+            "escalation_triggers": ["technical_support", "billing_issue", "complaint"],
+            "max_conversation_length": 20,
+            "auto_summarize": True
+        }
+
+        # Update existing inbound agents with model, prompt, and conversation settings
         result = db.execute(
             text("""
                 UPDATE agents
                 SET model = 'gpt-4o-mini',
-                    prompt_template = :new_prompt
+                    prompt_template = :new_prompt,
+                    conversation_settings = :new_conversation_settings
                 WHERE type = 'inbound'
             """),
-            {"new_prompt": new_prompt}
+            {
+                "new_prompt": new_prompt,
+                "new_conversation_settings": json.dumps(new_conversation_settings)
+            }
         )
 
         updated_count = result.rowcount

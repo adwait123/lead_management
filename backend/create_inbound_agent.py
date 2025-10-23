@@ -67,7 +67,7 @@ Current call information:
             personality_style="professional",
             response_length="moderate",
             conversation_settings={
-                "greeting_message": "Hello! Thank you for calling AILead Services. How can I help you today?",
+                "greeting_message": "Hi, this is Mike from AILead Services. How can I help you today?",
                 "escalation_triggers": ["technical_support", "billing_issue", "complaint"],
                 "max_conversation_length": 20,
                 "auto_summarize": True

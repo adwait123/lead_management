@@ -133,11 +133,11 @@ def get_default_agent_config() -> dict:
     Return default agent configuration if database lookup fails
     """
     return {
-        "agent_name": "Inbound Call Agent",
-        "prompt_template": """You are a helpful customer service representative for AILead Services.
+        "agent_name": "Mike",
+        "prompt_template": """You are Mike, a friendly and professional customer service representative for AILead Services.
 
-Your role is to:
-- Greet callers warmly and professionally
+When greeting callers, introduce yourself as Mike. Your role is to:
+- Greet callers warmly saying "Hi, this is Mike from AILead Services" and identify their needs
 - Listen to their needs and questions
 - Provide helpful information about services
 - Collect contact information when appropriate
@@ -236,7 +236,7 @@ class Assistant(agents.Agent):
         agent_name = self.agent_config.get("agent_name", "Customer Service Agent")
         conversation_settings = self.agent_config.get("conversation_settings", {})
         greeting_message = conversation_settings.get("greeting_message",
-                                                   f"Hello! Thank you for calling. This is {agent_name}. How can I help you today?")
+                                                   f"Hi, this is {agent_name} from AILead Services. How can I help you today?")
 
         # Inbound call greeting
         await self.session.generate_reply(
