@@ -572,8 +572,8 @@ async def get_agent_config_for_call(call_id: int, db: Session = Depends(get_db))
         "response_length": agent.response_length or "moderate",
         "custom_personality_instructions": agent.custom_personality_instructions,
 
-        # AI model settings
-        "model": agent.model or "gpt-4o-mini",
+        # AI model settings - always use gpt-4o-mini for structured outputs compatibility
+        "model": "gpt-4o-mini",
         "temperature": float(agent.temperature) if agent.temperature else 0.7,
         "max_tokens": agent.max_tokens or 500,
 
