@@ -20,7 +20,7 @@ export function Layout({ children }) {
     { name: 'Conversations', href: '/conversations', icon: MessageCircle },
     { name: 'AI Agents', href: '/agents', icon: Bot },
     { name: 'Calendar', href: '/calendar', icon: CalendarIcon },
-    { name: 'Workflows', href: '/workflows', icon: Workflow },
+    // { name: 'Workflows', href: '/workflows', icon: Workflow },
     { name: 'Integrations', href: '/integrations', icon: Blocks },
     { name: 'Billing', href: '/billing', icon: CreditCard },
   ]
