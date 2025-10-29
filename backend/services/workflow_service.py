@@ -168,8 +168,16 @@ class WorkflowService:
             # Set up follow-up sequences if agent has workflow steps
             self._setup_follow_up_sequences(session, agent)
 
-            # Generate initial message asynchronously
-            self._trigger_initial_message_generation(session.id, lead, event_data)
+            # Handle agent-specific initialization based on type
+            if agent.type == "outbound":
+                # Outbound agents should make calls, not send messages
+                self._trigger_outbound_call(session.id, lead, agent)
+            elif agent.type == "inbound" or agent.type == "conversational":
+                # Inbound/text agents should generate initial messages
+                self._trigger_initial_message_generation(session.id, lead, event_data)
+            else:
+                logger.warning(f"Unknown agent type '{agent.type}' for agent {agent.id}, defaulting to message generation")
+                self._trigger_initial_message_generation(session.id, lead, event_data)
 
             return session.id
         except Exception as e:
@@ -388,6 +396,65 @@ class WorkflowService:
             except Exception as e:
                 logger.error(f"Error closing database session: {str(e)}")
 
+    def _trigger_outbound_call(self, session_id: int, lead: Lead, agent: Agent):
+        """Trigger outbound call for outbound-type agents"""
+        try:
+            logger.info(f"Triggering outbound call for session {session_id}, lead {lead.id}, agent {agent.id}")
+
+            # Check if lead has a valid phone number
+            if not lead.phone:
+                logger.error(f"Cannot trigger outbound call for lead {lead.id}: No phone number")
+                return
+
+            # Import here to avoid circular imports
+            from models.call import Call
+            from services.outbound_web_service import OutboundWebService
+            from models.database import SessionLocal
+            import asyncio
+
+            # Create a new database session for call operations
+            new_db = SessionLocal()
+
+            try:
+                # Create call record
+                call = Call(
+                    lead_id=lead.id,
+                    agent_id=agent.id,
+                    phone_number=lead.phone,
+                    call_status="pending",
+                    call_metadata={
+                        "agent_session_id": session_id,
+                        "triggered_by": "workflow",
+                        "agent_name": agent.name,
+                        "auto_triggered": True,
+                        "lead_source": lead.source,
+                        "service_requested": lead.service_requested
+                    }
+                )
+
+                new_db.add(call)
+                new_db.commit()
+                new_db.refresh(call)
+
+                logger.info(f"Created call record {call.id} for session {session_id}")
+
+                # Dispatch the call using OutboundWebService
+                web_service = OutboundWebService(new_db)
+                asyncio.create_task(web_service.dispatch_call(call.id))
+
+                logger.info(f"Scheduled outbound call dispatch for call {call.id}, session {session_id}")
+
+            except Exception as e:
+                new_db.rollback()
+                logger.error(f"Error creating call record for session {session_id}: {str(e)}")
+                raise
+            finally:
+                new_db.close()
+
+        except Exception as e:
+            logger.error(f"Error triggering outbound call for session {session_id}: {str(e)}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
 
     def _setup_follow_up_sequences(self, session: AgentSession, agent: Agent):
         """Set up follow-up sequences for the agent session based on agent workflow steps"""

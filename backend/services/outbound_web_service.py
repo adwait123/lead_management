@@ -247,9 +247,10 @@ class OutboundWebService:
         if not lead.phone:
             return False, "Lead has no phone number"
 
-        # Only allow calls for 'torkin' source leads
-        if lead.source != "torkin":
-            return False, "Only 'torkin' source leads can be called via web service"
+        # Allow calls for both 'torkin' and 'website' source leads
+        allowed_sources = ["torkin", "website", "torkin website"]
+        if lead.source not in allowed_sources:
+            return False, f"Only leads from {', '.join(allowed_sources)} sources can be called via web service"
 
         # Check for existing active calls
         existing_call = self.db.query(Call).filter(

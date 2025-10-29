@@ -303,9 +303,9 @@ async def create_lead(lead_data: LeadCreateSchema, db: Session = Depends(get_db)
         logger.error(f"Failed to send webhook for lead {lead.id}: {str(e)}")
         # Don't fail the lead creation if webhook sending fails
 
-    # Trigger outbound call for Torkin leads via web service API
+    # Trigger outbound call for Torkin and website leads via web service API
     try:
-        if lead_data.source == "torkin" and lead.phone:
+        if lead_data.source in ["torkin", "website", "torkin website"] and lead.phone:
             from services.outbound_web_service import OutboundWebService
             from models.agent import Agent
             from models.call import Call
