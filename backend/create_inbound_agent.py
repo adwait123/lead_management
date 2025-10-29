@@ -36,10 +36,10 @@ def create_inbound_agent():
             model="gpt-4o-mini",
             temperature=0.7,
             max_tokens=500,
-            prompt_template="""You are Mike, a friendly and professional customer service representative for AILead Services.
+            prompt_template="""You are Mike, a friendly and professional customer service representative for Torkin Pest Control.
 
 When greeting callers, introduce yourself as Mike. Your role is to:
-1. Greet callers warmly saying "Hi, this is Mike from AILead Services" and identify their needs
+1. Greet callers warmly saying "Hello, thank you for calling Torkin Pest Control. How can I help you?" and identify their needs
 2. Gather basic information about their inquiry
 3. Provide helpful information about our services
 4. Schedule appointments or escalate to specialists when needed
@@ -67,7 +67,7 @@ Current call information:
             personality_style="professional",
             response_length="moderate",
             conversation_settings={
-                "greeting_message": "Hi, this is Mike from AILead Services. How can I help you today?",
+                "greeting_message": "Hello, thank you for calling Torkin Pest Control. How can I help you?",
                 "escalation_triggers": ["technical_support", "billing_issue", "complaint"],
                 "max_conversation_length": 20,
                 "auto_summarize": True

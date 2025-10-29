@@ -71,10 +71,53 @@ export function IntegrationModal({ integration, isOpen, onClose, onSave }) {
   const renderFormField = (field) => {
     const fieldId = `${integration.id}-${field.name}`;
 
+    // Check if this field should be disabled based on other field values
+    let isDisabled = field.disabled || false;
+
+    // For Yelp integration: disable API fields when Zapier is enabled
+    if (integration.id === 'yelp-ads' && (field.name === 'apiKey' || field.name === 'businessId')) {
+      const zapierField = integration.fields.find(f => f.name === 'useZapier');
+      const useZapier = formData['useZapier'] !== undefined ? formData['useZapier'] : (zapierField?.defaultValue || false);
+      if (useZapier) {
+        isDisabled = true;
+      }
+    }
+
+    if (field.type === 'toggle') {
+      return (
+        <div key={field.name} className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <label htmlFor={fieldId} className="block text-sm font-medium text-gray-700">
+                {field.label}
+                {field.required && <span className="text-red-500 ml-1">*</span>}
+              </label>
+              {field.description && (
+                <p className="text-sm text-gray-500 mt-1">{field.description}</p>
+              )}
+            </div>
+            <div className="flex items-center">
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  id={fieldId}
+                  type="checkbox"
+                  checked={formData[field.name] || field.defaultValue || false}
+                  onChange={(e) => handleInputChange(field.name, e.target.checked)}
+                  disabled={isDisabled}
+                  className="sr-only"
+                />
+                <div className={`w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}></div>
+              </label>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     if (field.type === 'select') {
       return (
         <div key={field.name} className="space-y-2">
-          <label htmlFor={fieldId} className="block text-sm font-medium text-gray-700">
+          <label htmlFor={fieldId} className={`block text-sm font-medium ${isDisabled ? 'text-gray-400' : 'text-gray-700'}`}>
             {field.label}
             {field.required && <span className="text-red-500 ml-1">*</span>}
           </label>
@@ -82,7 +125,8 @@ export function IntegrationModal({ integration, isOpen, onClose, onSave }) {
             id={fieldId}
             value={formData[field.name] || ''}
             onChange={(e) => handleInputChange(field.name, e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={isDisabled}
+            className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${isDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
             required={field.required}
           >
             <option value="">Select {field.label}</option>
@@ -98,7 +142,7 @@ export function IntegrationModal({ integration, isOpen, onClose, onSave }) {
 
     return (
       <div key={field.name} className="space-y-2">
-        <label htmlFor={fieldId} className="block text-sm font-medium text-gray-700">
+        <label htmlFor={fieldId} className={`block text-sm font-medium ${isDisabled ? 'text-gray-400' : 'text-gray-700'}`}>
           {field.label}
           {field.required && <span className="text-red-500 ml-1">*</span>}
         </label>
@@ -108,7 +152,8 @@ export function IntegrationModal({ integration, isOpen, onClose, onSave }) {
           value={formData[field.name] || ''}
           onChange={(e) => handleInputChange(field.name, e.target.value)}
           placeholder={field.placeholder}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          disabled={isDisabled}
+          className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${isDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`}
           required={field.required}
         />
       </div>

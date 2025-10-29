@@ -9,6 +9,17 @@ export function IntegrationCard({ integration, onClick }) {
     setLogoError(true);
   };
 
+  // Check if this integration is using Zapier
+  const isUsingZapier = integration.id === 'yelp-ads' && integration.fields?.find(field =>
+    field.name === 'useZapier' && field.defaultValue === true
+  );
+
+  const getConnectionStatus = () => {
+    if (!isConnected) return 'Not Connected';
+    if (isUsingZapier) return 'Connected via Zapier';
+    return 'Connected';
+  };
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6 hover:border-gray-300 transition-colors cursor-pointer group">
       <div className="flex items-start justify-between mb-4">
@@ -32,7 +43,7 @@ export function IntegrationCard({ integration, onClick }) {
         <div className="flex items-center">
           <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-gray-300'}`}></div>
           <span className={`ml-2 text-xs font-medium ${isConnected ? 'text-green-600' : 'text-gray-500'}`}>
-            {isConnected ? 'Connected' : 'Not Connected'}
+            {getConnectionStatus()}
           </span>
         </div>
       </div>

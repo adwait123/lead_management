@@ -199,8 +199,16 @@ export const integrations = {
       category: 'lead_source',
       logoUrl: 'https://logo.clearbit.com/yelp.com',
       logoFallback: { color: 'bg-red-600', text: 'YA' },
-      isConnected: false,
+      isConnected: true,
       fields: [
+        {
+          name: 'useZapier',
+          label: 'Use Zapier Integration',
+          type: 'toggle',
+          required: false,
+          defaultValue: true,
+          description: 'Connect through Zapier for automated workflows'
+        },
         {
           name: 'apiKey',
           label: 'API Key',

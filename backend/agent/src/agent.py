@@ -134,10 +134,10 @@ def get_default_agent_config() -> dict:
     """
     return {
         "agent_name": "Mike",
-        "prompt_template": """You are Mike, a friendly and professional customer service representative for AILead Services.
+        "prompt_template": """You are Mike, a friendly and professional customer service representative for Torkin Pest Control.
 
 When greeting callers, introduce yourself as Mike. Your role is to:
-- Greet callers warmly saying "Hi, this is Mike from AILead Services" and identify their needs
+- Greet callers warmly saying "Hello, thank you for calling Torkin Pest Control. How can I help you?" and identify their needs
 - Listen to their needs and questions
 - Provide helpful information about services
 - Collect contact information when appropriate
@@ -236,7 +236,7 @@ class Assistant(agents.Agent):
         agent_name = self.agent_config.get("agent_name", "Customer Service Agent")
         conversation_settings = self.agent_config.get("conversation_settings", {})
         greeting_message = conversation_settings.get("greeting_message",
-                                                   f"Hi, this is {agent_name} from AILead Services. How can I help you today?")
+                                                   f"Hello, thank you for calling Torkin Pest Control. How can I help you?")
 
         # Inbound call greeting
         await self.session.generate_reply(
