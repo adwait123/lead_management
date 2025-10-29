@@ -173,8 +173,14 @@ class WorkflowService:
                 # Outbound agents should make calls, not send messages
                 self._trigger_outbound_call(session.id, lead, agent)
             elif agent.type == "inbound" or agent.type == "conversational":
-                # Inbound/text agents should generate initial messages
-                self._trigger_initial_message_generation(session.id, lead, event_data)
+                # Check if agent is configured for text messages
+                text_enabled = agent.conversation_settings.get("text_enabled", True) if agent.conversation_settings else True
+                if text_enabled:
+                    # Text-enabled agents should generate initial messages
+                    self._trigger_initial_message_generation(session.id, lead, event_data)
+                else:
+                    # Voice-only agents should not generate text messages
+                    logger.info(f"Agent {agent.id} ({agent.name}) is voice-only (text_enabled=false), skipping text message generation")
             else:
                 logger.warning(f"Unknown agent type '{agent.type}' for agent {agent.id}, defaulting to message generation")
                 self._trigger_initial_message_generation(session.id, lead, event_data)
