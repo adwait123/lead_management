@@ -12,8 +12,8 @@ const mockExternalAppointments = {
     {
       id: 'gc_001',
       title: 'Team Meeting',
-      start: '2024-01-15T09:00:00Z',
-      end: '2024-01-15T10:00:00Z',
+      start: '2025-10-30T09:00:00Z',
+      end: '2025-10-30T10:00:00Z',
       type: 'meeting',
       source: 'google_calendar',
       editable: false
@@ -21,68 +21,108 @@ const mockExternalAppointments = {
     {
       id: 'gc_002',
       title: 'HVAC Consultation - Smith Residence',
-      start: '2024-01-15T14:00:00Z',
-      end: '2024-01-15T15:00:00Z',
+      start: '2025-10-30T14:00:00Z',
+      end: '2025-10-30T15:00:00Z',
       type: 'consultation',
       source: 'google_calendar',
       customer: 'John Smith',
       phone: '(555) 123-4567',
       address: '123 Oak Street, Dallas, TX 75201',
       editable: true
+    },
+    {
+      id: 'gc_003',
+      title: 'Pest Control Consultation - Garcia Home',
+      start: '2025-10-31T10:00:00Z',
+      end: '2025-10-31T11:00:00Z',
+      type: 'consultation',
+      source: 'google_calendar',
+      customer: 'Maria Garcia',
+      phone: '(555) 234-5678',
+      address: '789 Maple Street, Richardson, TX 75080',
+      editable: true
     }
   ],
   servicetitan: [
     {
       id: 'st_001',
-      title: 'Plumbing Repair - Johnson Home',
-      start: '2024-01-15T10:30:00Z',
-      end: '2024-01-15T12:30:00Z',
-      type: 'repair',
+      title: 'Termite Treatment - Johnson Home',
+      start: '2025-10-30T10:30:00Z',
+      end: '2025-10-30T12:30:00Z',
+      type: 'treatment',
       source: 'servicetitan',
       customer: 'Sarah Johnson',
       phone: '(555) 987-6543',
       address: '456 Pine Avenue, Plano, TX 75023',
       technician: 'Tom Wilson',
-      jobNumber: 'ST-2024-001',
+      jobNumber: 'ST-2025-001',
       editable: true
     },
     {
       id: 'st_002',
-      title: 'Electrical Installation - Davis Property',
-      start: '2024-01-16T09:00:00Z',
-      end: '2024-01-16T13:00:00Z',
+      title: 'Rodent Control Installation - Davis Property',
+      start: '2025-10-31T09:00:00Z',
+      end: '2025-10-31T13:00:00Z',
       type: 'installation',
       source: 'servicetitan',
       customer: 'Mike Davis',
       phone: '(555) 456-7890',
       address: '789 Elm Drive, McKinney, TX 75070',
       technician: 'Carlos Rodriguez',
-      jobNumber: 'ST-2024-002',
+      jobNumber: 'ST-2025-002',
+      editable: true
+    },
+    {
+      id: 'st_003',
+      title: 'Quarterly Pest Inspection - Brown Business',
+      start: '2025-11-01T08:00:00Z',
+      end: '2025-11-01T10:00:00Z',
+      type: 'inspection',
+      source: 'servicetitan',
+      customer: 'Brown Industries',
+      phone: '(555) 345-6789',
+      address: '555 Corporate Blvd, Irving, TX 75038',
+      technician: 'Mike Thompson',
+      jobNumber: 'ST-2025-003',
       editable: true
     }
   ],
   housecall_pro: [
     {
       id: 'hcp_001',
-      title: 'Emergency Water Heater Repair',
-      start: '2024-01-15T16:00:00Z',
-      end: '2024-01-15T18:30:00Z',
+      title: 'Emergency Ant Infestation Treatment',
+      start: '2025-10-30T16:00:00Z',
+      end: '2025-10-30T18:30:00Z',
       type: 'emergency',
       source: 'housecall_pro',
       customer: 'Lisa Wilson',
       phone: '(555) 321-0987',
       address: '321 Maple Court, Frisco, TX 75034',
       priority: 'urgent',
-      jobId: 'HCP-2024-001',
+      jobId: 'HCP-2025-001',
+      editable: true
+    },
+    {
+      id: 'hcp_002',
+      title: 'Cockroach Treatment - Taylor Apartment',
+      start: '2025-11-01T14:00:00Z',
+      end: '2025-11-01T16:00:00Z',
+      type: 'treatment',
+      source: 'housecall_pro',
+      customer: 'Jennifer Taylor',
+      phone: '(555) 456-7891',
+      address: '432 Oak Avenue, Garland, TX 75040',
+      priority: 'standard',
+      jobId: 'HCP-2025-002',
       editable: true
     }
   ],
   jobber: [
     {
       id: 'jb_001',
-      title: 'Routine HVAC Maintenance',
-      start: '2024-01-16T08:00:00Z',
-      end: '2024-01-16T09:30:00Z',
+      title: 'Monthly Pest Prevention Maintenance',
+      start: '2025-10-31T08:00:00Z',
+      end: '2025-10-31T09:30:00Z',
       type: 'maintenance',
       source: 'jobber',
       customer: 'Robert Martinez',
@@ -91,14 +131,39 @@ const mockExternalAppointments = {
       recurring: true,
       workOrderId: 'JB-WO-001',
       editable: true
+    },
+    {
+      id: 'jb_002',
+      title: 'Commercial Pest Control - Office Complex',
+      start: '2025-11-01T13:00:00Z',
+      end: '2025-11-01T15:00:00Z',
+      type: 'commercial',
+      source: 'jobber',
+      customer: 'Sunshine Office Complex',
+      phone: '(555) 567-8901',
+      address: '1200 Business Parkway, Addison, TX 75001',
+      recurring: true,
+      workOrderId: 'JB-WO-002',
+      editable: true
     }
   ],
   outlook_365: [
     {
       id: 'o365_001',
       title: 'Client Consultation Call',
-      start: '2024-01-15T11:00:00Z',
-      end: '2024-01-15T11:30:00Z',
+      start: '2025-10-30T11:00:00Z',
+      end: '2025-10-30T11:30:00Z',
+      type: 'meeting',
+      source: 'outlook_365',
+      isTeamsMeeting: true,
+      meetingLink: 'https://teams.microsoft.com/l/meetup-join/...',
+      editable: false
+    },
+    {
+      id: 'o365_002',
+      title: 'Weekly Team Sync - Pest Control Division',
+      start: '2025-11-01T09:00:00Z',
+      end: '2025-11-01T09:30:00Z',
       type: 'meeting',
       source: 'outlook_365',
       isTeamsMeeting: true,
@@ -112,20 +177,20 @@ const mockExternalAppointments = {
 const mockIntegrationStatus = {
   google_calendar: {
     connected: true,
-    lastSync: new Date('2024-01-15T08:30:00Z'),
+    lastSync: new Date('2025-10-29T08:30:00Z'),
     syncDirection: 'bidirectional',
     syncFrequency: 'real_time',
     conflictResolution: 'calendar_priority',
-    accountEmail: 'business@acmehomeservices.com',
+    accountEmail: 'business@torkinpestcontrol.com',
     calendarName: 'Business Calendar'
   },
   servicetitan: {
     connected: true,
-    lastSync: new Date('2024-01-15T08:25:00Z'),
+    lastSync: new Date('2025-10-29T08:25:00Z'),
     syncDirection: 'bidirectional',
     syncFrequency: 'every_5_minutes',
     conflictResolution: 'agent_priority',
-    companyId: 'ACME-123',
+    companyId: 'TORKIN-123',
     locationId: 'LOC-001'
   },
   housecall_pro: {
@@ -135,20 +200,20 @@ const mockIntegrationStatus = {
   },
   jobber: {
     connected: true,
-    lastSync: new Date('2024-01-15T08:20:00Z'),
+    lastSync: new Date('2025-10-29T08:20:00Z'),
     syncDirection: 'to_calendar',
     syncFrequency: 'every_15_minutes',
     conflictResolution: 'manual_review',
-    companyId: 'acme-home-services'
+    companyId: 'torkin-pest-control'
   },
   outlook_365: {
     connected: true,
-    lastSync: new Date('2024-01-15T08:35:00Z'),
+    lastSync: new Date('2025-10-29T08:35:00Z'),
     syncDirection: 'from_calendar',
     syncFrequency: 'real_time',
     conflictResolution: 'calendar_priority',
     tenantId: 'tenant-123',
-    mailboxes: ['business@acmehomeservices.com']
+    mailboxes: ['business@torkinpestcontrol.com']
   },
   custom_crm: {
     connected: false,

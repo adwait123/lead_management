@@ -316,59 +316,61 @@ class Assistant(agents.Agent):
         return result_message
 
     @agents.function_tool()
-    async def generate_appointment_slots(self, context: agents.RunContext, address: str, project_type: str, reasoning_for_tool_call: str) -> str:
+    async def generate_appointment_slots(self, context: agents.RunContext, address: str, service_type: str, reasoning_for_tool_call: str) -> str:
         """
-        Generate available appointment time slots for design consultation.
+        Generate available appointment time slots for pest control service.
 
         Args:
-            address (str): The customer's address for the consultation.
-            project_type (str): Type of flooring project.
+            address (str): The customer's address for the service.
+            service_type (str): Type of pest control service (inspection, treatment, etc.).
             reasoning_for_tool_call (str): The agent's reasoning for the tool call.
 
         Returns:
             str: Available appointment slots.
         """
         from datetime import datetime, timedelta
+        import random
 
-        # Generate dummy appointment slots - next 3 business days
+        # Generate realistic appointment slots - next 5 business days
         today = datetime.now()
         slots = []
 
-        # Find next 3 business days
+        # Find next 5 business days with varying times
         current_date = today + timedelta(days=1)
-        while len(slots) < 3:
+        slot_count = 0
+
+        while slot_count < 6:  # Generate 6 slots across multiple days
             if current_date.weekday() < 5:  # Monday = 0, Friday = 4
                 day_name = current_date.strftime("%A")
                 date_str = current_date.strftime("%B %d")
 
-                # Morning and afternoon slots
-                morning_time = "10:00 AM"
-                afternoon_time = "2:00 PM"
+                # Multiple time slots per day (8 AM - 5 PM)
+                time_options = ["8:00 AM", "10:00 AM", "11:30 AM", "1:00 PM", "2:30 PM", "4:00 PM"]
+                available_times = random.sample(time_options, random.randint(1, 3))
 
-                slots.append({
-                    "day": day_name,
-                    "date": date_str,
-                    "time": morning_time,
-                    "slot_id": f"slot_{len(slots)+1}"
-                })
-
-                if len(slots) < 3:
-                    slots.append({
-                        "day": day_name,
-                        "date": date_str,
-                        "time": afternoon_time,
-                        "slot_id": f"slot_{len(slots)+1}"
-                    })
+                for time_slot in available_times:
+                    if slot_count < 6:
+                        slots.append({
+                            "day": day_name,
+                            "date": date_str,
+                            "time": time_slot,
+                            "slot_id": f"TPC-{current_date.strftime('%m%d')}-{time_slot.replace(':', '').replace(' ', '')}",
+                            "technician": random.choice(["Tom Wilson", "Carlos Rodriguez", "Mike Thompson", "Sarah Davis"]),
+                            "service_window": "2-hour window"
+                        })
+                        slot_count += 1
 
             current_date += timedelta(days=1)
 
-        # Return only the first 3 slots
-        available_slots = slots[:3]
+        # Return only the first 5 slots for selection
+        available_slots = slots[:5]
 
         result_message = json.dumps({
             "status": "success",
+            "service_type": service_type,
             "available_slots": available_slots,
-            "message": f"Found {len(available_slots)} available consultation slots"
+            "message": f"Found {len(available_slots)} available time slots for {service_type} service",
+            "notes": "All appointments include free inspection and quote"
         })
 
         return result_message
@@ -376,14 +378,14 @@ class Assistant(agents.Agent):
     @agents.function_tool()
     async def book_appointment(self, context: agents.RunContext, slot_id: str, day: str, date: str, time: str, address: str, reasoning_for_tool_call: str) -> str:
         """
-        Book the selected appointment slot for design consultation.
+        Book the selected appointment slot for pest control service.
 
         Args:
             slot_id (str): Unique identifier for the selected appointment slot.
             day (str): Day of the week for the appointment.
             date (str): Date of the appointment.
             time (str): Time of the appointment.
-            address (str): Customer's address for the consultation.
+            address (str): Customer's address for the service.
             reasoning_for_tool_call (str): The agent's reasoning for the tool call.
 
         Returns:
@@ -391,26 +393,34 @@ class Assistant(agents.Agent):
         """
         import random
 
-        # Generate dummy appointment confirmation
-        appointment_id = f"FCI-{random.randint(10000, 99999)}"
-        consultant_name = random.choice(["Sarah Johnson", "Mike Thompson", "Lisa Chen", "David Rodriguez"])
+        # Generate realistic pest control appointment confirmation
+        appointment_id = f"TPC-{random.randint(10000, 99999)}"
+        technician_name = random.choice(["Tom Wilson", "Carlos Rodriguez", "Mike Thompson", "Sarah Davis", "Jennifer Martinez"])
+        service_types = ["Inspection & Quote", "Termite Treatment", "Rodent Control", "General Pest Control", "Ant Treatment"]
+        selected_service = random.choice(service_types)
 
         booking_details = {
             "appointment_id": appointment_id,
+            "confirmation_number": f"CONF-{random.randint(1000, 9999)}",
             "day": day,
             "date": date,
             "time": time,
+            "service_window": "2-hour window",
             "address": address,
-            "consultant_name": consultant_name,
-            "service_type": "Free In-Home Design Consultation",
-            "duration": "60-90 minutes",
-            "confirmation_sms": "Will be sent within 15-20 minutes"
+            "technician_name": technician_name,
+            "service_type": selected_service,
+            "estimated_duration": "1-3 hours depending on service",
+            "what_to_expect": "Free inspection, detailed quote, and treatment if approved",
+            "confirmation_sms": "Text confirmation sent within 10 minutes",
+            "phone_reminder": "Call reminder 24 hours before appointment",
+            "preparation_notes": "Please ensure access to all areas requiring inspection"
         }
 
         result_message = json.dumps({
             "status": "success",
             "booking_details": booking_details,
-            "message": f"Appointment successfully booked for {day}, {date} at {time}"
+            "message": f"Pest control appointment successfully booked for {day}, {date} at {time}",
+            "next_steps": "You'll receive confirmation via text and email. Our technician will call 30 minutes before arrival."
         })
 
         return result_message
@@ -423,7 +433,7 @@ class Assistant(agents.Agent):
         Args:
             customer_phone (str): Customer's phone number for callback.
             preferred_time (str): Customer's preferred callback time.
-            reason (str): Reason for callback (e.g., no available slots).
+            reason (str): Reason for callback (e.g., no available slots, emergency).
             reasoning_for_tool_call (str): The agent's reasoning for the tool call.
 
         Returns:
@@ -432,25 +442,138 @@ class Assistant(agents.Agent):
         import random
         from datetime import datetime, timedelta
 
-        # Generate dummy callback request details
-        callback_id = f"CB-{random.randint(10000, 99999)}"
-        callback_time = datetime.now() + timedelta(minutes=random.randint(30, 60))
-        manager_name = random.choice(["Jennifer Adams", "Robert Martinez", "Susan Williams", "Michael Brown"])
+        # Generate realistic callback request details
+        callback_id = f"TCB-{random.randint(10000, 99999)}"
+
+        # Determine callback timing based on reason
+        if "emergency" in reason.lower() or "urgent" in reason.lower():
+            callback_time = datetime.now() + timedelta(minutes=random.randint(15, 30))
+            priority = "urgent"
+        else:
+            callback_time = datetime.now() + timedelta(minutes=random.randint(30, 120))
+            priority = "standard"
+
+        manager_name = random.choice([
+            "Jennifer Adams - Scheduling Manager",
+            "Robert Martinez - Senior Coordinator",
+            "Susan Williams - Customer Success Manager",
+            "Michael Brown - Regional Manager"
+        ])
 
         callback_details = {
             "callback_id": callback_id,
             "customer_phone": customer_phone,
-            "scheduled_callback_time": callback_time.strftime("%I:%M %p"),
-            "manager_name": manager_name,
+            "preferred_time": preferred_time,
+            "scheduled_callback_time": callback_time.strftime("%I:%M %p today"),
+            "manager_name": manager_name.split(" - ")[0],
+            "manager_title": manager_name.split(" - ")[1],
             "reason": reason,
             "status": "scheduled",
-            "priority": "high"
+            "priority": priority,
+            "reference_number": f"REF-{random.randint(1000, 9999)}",
+            "estimated_wait": "15-45 minutes" if priority == "urgent" else "30-90 minutes"
         }
 
         result_message = json.dumps({
             "status": "success",
             "callback_details": callback_details,
-            "message": f"Callback scheduled with {manager_name} within the next hour at {callback_time.strftime('%I:%M %p')}"
+            "message": f"Priority callback scheduled with {callback_details['manager_name']} within {callback_details['estimated_wait']}",
+            "instructions": "Please keep your phone available. Our manager will call from a Torkin Pest Control number."
+        })
+
+        return result_message
+
+    @agents.function_tool()
+    async def transfer_to_team(self, context: agents.RunContext, department: str, reason: str, customer_info: str, reasoning_for_tool_call: str) -> str:
+        """
+        Transfer the customer to a specialized team department for advanced assistance.
+
+        Args:
+            department (str): Target department (sales, technical, billing, management).
+            reason (str): Reason for transfer.
+            customer_info (str): Brief customer information for context.
+            reasoning_for_tool_call (str): The agent's reasoning for the tool call.
+
+        Returns:
+            str: Transfer confirmation details.
+        """
+        import random
+        from datetime import datetime
+
+        # Generate realistic transfer details
+        transfer_id = f"TXF-{random.randint(10000, 99999)}"
+
+        # Department-specific team assignments
+        departments = {
+            "sales": {
+                "team_name": "Sales & Estimates Team",
+                "specialists": [
+                    "David Chen - Senior Sales Specialist",
+                    "Maria Rodriguez - Commercial Estimates Manager",
+                    "James Thompson - Residential Sales Expert",
+                    "Sarah Johnson - Account Executive"
+                ],
+                "avg_wait": "2-5 minutes",
+                "specialty": "pricing, service packages, and contract negotiations"
+            },
+            "technical": {
+                "team_name": "Technical Support Team",
+                "specialists": [
+                    "Mark Wilson - Lead Technician Supervisor",
+                    "Lisa Park - IPM Specialist",
+                    "Tony Garcia - Rodent Control Expert",
+                    "Amanda Foster - Termite Treatment Specialist"
+                ],
+                "avg_wait": "1-3 minutes",
+                "specialty": "treatment methods, pest identification, and service issues"
+            },
+            "billing": {
+                "team_name": "Billing & Accounts Team",
+                "specialists": [
+                    "Robert Kim - Billing Specialist",
+                    "Jennifer Martinez - Accounts Manager",
+                    "Kevin Brown - Payment Coordinator",
+                    "Nancy Davis - Contract Administration"
+                ],
+                "avg_wait": "3-7 minutes",
+                "specialty": "payment processing, billing questions, and account management"
+            },
+            "management": {
+                "team_name": "Management Team",
+                "specialists": [
+                    "Patricia Anderson - Customer Success Manager",
+                    "Michael Taylor - Regional Operations Manager",
+                    "Susan White - Service Quality Manager",
+                    "Daniel Lee - Branch Manager"
+                ],
+                "avg_wait": "5-10 minutes",
+                "specialty": "service complaints, escalations, and management decisions"
+            }
+        }
+
+        # Default to management if department not found
+        dept_info = departments.get(department.lower(), departments["management"])
+        assigned_specialist = random.choice(dept_info["specialists"])
+
+        transfer_details = {
+            "transfer_id": transfer_id,
+            "department": dept_info["team_name"],
+            "assigned_specialist": assigned_specialist.split(" - ")[0],
+            "specialist_title": assigned_specialist.split(" - ")[1],
+            "reason": reason,
+            "customer_summary": customer_info,
+            "estimated_wait": dept_info["avg_wait"],
+            "specialty_area": dept_info["specialty"],
+            "transfer_time": datetime.now().strftime("%I:%M %p"),
+            "priority": "high" if "urgent" in reason.lower() or "emergency" in reason.lower() else "standard",
+            "reference_number": f"REF-{random.randint(1000, 9999)}"
+        }
+
+        result_message = json.dumps({
+            "status": "transferring",
+            "transfer_details": transfer_details,
+            "message": f"Transferring you to {transfer_details['assigned_specialist']} in our {transfer_details['department']}",
+            "instructions": f"Please hold while I connect you. Estimated wait time: {transfer_details['estimated_wait']}. Your reference number is {transfer_details['reference_number']}."
         })
 
         return result_message
