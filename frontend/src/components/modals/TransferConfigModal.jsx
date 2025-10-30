@@ -7,26 +7,58 @@ export function TransferConfigModal({ isOpen, onClose, onSave, config = {}, onCo
     teams: config?.teams || [
       {
         id: 'sales_team',
-        name: 'Sales Team',
-        description: 'For qualified leads and appointment scheduling',
+        name: 'Sales & Estimates Team',
+        description: 'For pricing, service packages, and contract negotiations',
+        availability: {
+          monday: { start: '08:00', end: '18:00', enabled: true },
+          tuesday: { start: '08:00', end: '18:00', enabled: true },
+          wednesday: { start: '08:00', end: '18:00', enabled: true },
+          thursday: { start: '08:00', end: '18:00', enabled: true },
+          friday: { start: '08:00', end: '18:00', enabled: true },
+          saturday: { start: '09:00', end: '15:00', enabled: true },
+          sunday: { start: '10:00', end: '16:00', enabled: false }
+        },
+        members: ['David Chen - Senior Sales Specialist', 'Maria Rodriguez - Commercial Estimates Manager', 'James Thompson - Residential Sales Expert'],
+        priority: 1
+      },
+      {
+        id: 'technical_team',
+        name: 'Technical Support Team',
+        description: 'For treatment methods, pest identification, and service issues',
+        availability: {
+          monday: { start: '07:00', end: '19:00', enabled: true },
+          tuesday: { start: '07:00', end: '19:00', enabled: true },
+          wednesday: { start: '07:00', end: '19:00', enabled: true },
+          thursday: { start: '07:00', end: '19:00', enabled: true },
+          friday: { start: '07:00', end: '19:00', enabled: true },
+          saturday: { start: '08:00', end: '16:00', enabled: true },
+          sunday: { start: '09:00', end: '15:00', enabled: true }
+        },
+        members: ['Mark Wilson - Lead Technician Supervisor', 'Lisa Park - IPM Specialist', 'Tony Garcia - Rodent Control Expert'],
+        priority: 2
+      },
+      {
+        id: 'billing_team',
+        name: 'Billing & Accounts Team',
+        description: 'For payment processing, billing questions, and account management',
         availability: {
           monday: { start: '09:00', end: '17:00', enabled: true },
           tuesday: { start: '09:00', end: '17:00', enabled: true },
           wednesday: { start: '09:00', end: '17:00', enabled: true },
           thursday: { start: '09:00', end: '17:00', enabled: true },
           friday: { start: '09:00', end: '17:00', enabled: true },
-          saturday: { start: '09:00', end: '15:00', enabled: false },
-          sunday: { start: '10:00', end: '16:00', enabled: false }
+          saturday: { start: '09:00', end: '13:00', enabled: false },
+          sunday: { start: '10:00', end: '14:00', enabled: false }
         },
-        members: ['John Smith', 'Sarah Johnson'],
-        priority: 1
+        members: ['Robert Kim - Billing Specialist', 'Jennifer Martinez - Accounts Manager', 'Kevin Brown - Payment Coordinator'],
+        priority: 3
       }
     ],
     transferMessages: config?.transferMessages || {
-      'sales_team': 'I\'m connecting you with our sales specialist who can help you with scheduling and pricing.',
-      'technical_support': 'Let me transfer you to our technical team who can assist with your specific needs.',
-      'billing': 'I\'m transferring you to our billing department to help resolve your payment questions.',
-      'manager': 'I\'m escalating your call to a manager who can provide additional assistance.'
+      'sales_team': 'I\'m connecting you with our sales and estimates team who can help you with pricing and service packages.',
+      'technical_team': 'Let me transfer you to our technical support team who can assist with pest treatment methods and service questions.',
+      'billing_team': 'I\'m transferring you to our billing department to help resolve your payment and account questions.',
+      'management_team': 'I\'m escalating your call to our management team who can provide additional assistance and resolve any concerns.'
     },
     escalationRules: config?.escalationRules || {
       maxAttempts: 2,

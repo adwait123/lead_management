@@ -15,16 +15,65 @@ export function AppointmentConfigModal({ isOpen, onClose, onSave, config = {}, o
 
   const [appointmentConfig, setAppointmentConfig] = useState({
     calendarIntegration: config?.calendarIntegration || null,
-    appointmentTypes: config?.appointmentTypes || [],
+    appointmentTypes: config?.appointmentTypes || [
+      {
+        id: 'inspection',
+        name: 'Property Inspection',
+        duration: 60,
+        description: 'Comprehensive pest assessment and identification',
+        color: '#3B82F6',
+        pricing: '$89 - $149'
+      },
+      {
+        id: 'general_treatment',
+        name: 'General Pest Control',
+        duration: 90,
+        description: 'Standard interior and exterior pest treatment',
+        color: '#10B981',
+        pricing: '$149 - $249'
+      },
+      {
+        id: 'termite_treatment',
+        name: 'Termite Treatment',
+        duration: 120,
+        description: 'Specialized termite inspection and treatment',
+        color: '#F59E0B',
+        pricing: '$299 - $799'
+      },
+      {
+        id: 'rodent_control',
+        name: 'Rodent Control',
+        duration: 75,
+        description: 'Comprehensive rodent exclusion and elimination',
+        color: '#EF4444',
+        pricing: '$199 - $349'
+      },
+      {
+        id: 'emergency_service',
+        name: 'Emergency Service',
+        duration: 60,
+        description: 'Urgent pest control response (24/7 available)',
+        color: '#DC2626',
+        pricing: '$249 - $399'
+      },
+      {
+        id: 'preventive_maintenance',
+        name: 'Preventive Maintenance',
+        duration: 45,
+        description: 'Quarterly preventive pest control service',
+        color: '#8B5CF6',
+        pricing: '$99 - $189'
+      }
+    ],
     availabilityRules: {
       businessHours: config?.availabilityRules?.businessHours || defaultBusinessHours,
       minimumNotice: config?.availabilityRules?.minimumNotice || '2_hours',
       maxAdvanceBooking: config?.availabilityRules?.maxAdvanceBooking || '30_days'
     },
     confirmationMessages: config?.confirmationMessages || {
-      booking: 'Your appointment has been scheduled for {date} at {time}. We\'ll send you a confirmation shortly.',
-      reminder: 'Reminder: You have an appointment scheduled for {date} at {time}.',
-      cancellation: 'Your appointment has been cancelled. Please contact us to reschedule.'
+      booking: 'Your Torkin Pest Control appointment has been scheduled for {date} at {time}. A technician will call 30 minutes before arrival.',
+      reminder: 'Reminder: Your pest control service is scheduled for {date} at {time}. Please ensure exterior access is available.',
+      cancellation: 'Your Torkin Pest Control appointment has been cancelled. Please contact us at (555) 123-PEST to reschedule.'
     },
     testStatus: config?.testStatus || 'not_tested'
   });
