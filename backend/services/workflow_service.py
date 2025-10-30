@@ -43,6 +43,16 @@ class WorkflowService:
             logger.info(f"No agents found with trigger for event type: {event_type} and lead source: {lead_source}")
             return []
 
+        # Filter agents based on lead-agent compatibility
+        compatible_agents = self._filter_compatible_agents(matching_agents, event_data)
+
+        if not compatible_agents:
+            logger.warning(f"No compatible agents found for event {event_type}. Original matches: {len(matching_agents)}")
+            # Fall back to original matching agents if no compatible ones found
+            compatible_agents = matching_agents
+
+        matching_agents = compatible_agents
+
         created_sessions = []
 
         for agent in matching_agents:
@@ -121,6 +131,51 @@ class WorkflowService:
 
         return False
 
+    def _filter_compatible_agents(self, agents: List[Agent], event_data: Dict[str, Any]) -> List[Agent]:
+        """Filter agents based on lead-agent compatibility (phone availability vs agent capabilities)"""
+        from models.lead import Lead
+
+        # Get lead data to check phone availability
+        lead_id = event_data.get('lead_id')
+        if not lead_id:
+            logger.debug("No lead_id in event_data, returning all agents")
+            return agents
+
+        try:
+            lead = self.db.query(Lead).filter(Lead.id == lead_id).first()
+            if not lead:
+                logger.warning(f"Lead {lead_id} not found in database, returning all agents")
+                return agents
+
+            has_phone = bool(lead.phone and lead.phone.strip())
+            logger.info(f"Lead {lead_id} phone availability: {has_phone}")
+
+            if not has_phone:
+                # Lead has no phone - only return text-enabled agents
+                compatible_agents = []
+                for agent in agents:
+                    text_enabled = agent.conversation_settings.get("text_enabled", True) if agent.conversation_settings else True
+                    if text_enabled:
+                        compatible_agents.append(agent)
+                        logger.info(f"Agent {agent.id} ({agent.name}) is text-enabled, compatible with phoneless lead")
+                    else:
+                        logger.info(f"Agent {agent.id} ({agent.name}) is voice-only, incompatible with phoneless lead")
+
+                if compatible_agents:
+                    logger.info(f"Filtered to {len(compatible_agents)} text-enabled agents for phoneless lead")
+                    return compatible_agents
+                else:
+                    logger.warning("No text-enabled agents found for phoneless lead, returning all agents as fallback")
+                    return agents
+            else:
+                # Lead has phone - all agents are compatible
+                logger.info(f"Lead {lead_id} has phone number, all {len(agents)} agents are compatible")
+                return agents
+
+        except Exception as e:
+            logger.error(f"Error checking lead-agent compatibility: {str(e)}")
+            return agents  # Return all agents on error
+
     def _create_agent_session(self, agent: Agent, event_type: str, event_data: Dict[str, Any]) -> Optional[int]:
         """Create an agent session for the triggered agent"""
 
@@ -170,8 +225,17 @@ class WorkflowService:
 
             # Handle agent-specific initialization based on type
             if agent.type == "outbound":
-                # Outbound agents should make calls, not send messages
-                self._trigger_outbound_call(session.id, lead, agent)
+                # Check agent's communication preference
+                text_enabled = agent.conversation_settings.get("text_enabled", True) if agent.conversation_settings else True
+
+                if text_enabled:
+                    # Text-only outbound agent: skip calling, send message immediately
+                    logger.info(f"Outbound agent {agent.id} is text-enabled, sending message directly")
+                    self._trigger_initial_message_generation(session.id, lead, event_data)
+                else:
+                    # Voice-only outbound agent: only make calls, no text fallback
+                    logger.info(f"Outbound agent {agent.id} is voice-only, attempting call")
+                    self._trigger_outbound_call(session.id, lead, agent)
             elif agent.type == "inbound" or agent.type == "conversational":
                 # Check if agent is configured for text messages
                 text_enabled = agent.conversation_settings.get("text_enabled", True) if agent.conversation_settings else True
@@ -402,15 +466,15 @@ class WorkflowService:
             except Exception as e:
                 logger.error(f"Error closing database session: {str(e)}")
 
-    def _trigger_outbound_call(self, session_id: int, lead: Lead, agent: Agent):
-        """Trigger outbound call for outbound-type agents"""
+    def _trigger_outbound_call(self, session_id: int, lead: Lead, agent: Agent) -> bool:
+        """Trigger outbound call for outbound-type agents. Returns True if successful, False if failed."""
         try:
             logger.info(f"Triggering outbound call for session {session_id}, lead {lead.id}, agent {agent.id}")
 
             # Check if lead has a valid phone number
             if not lead.phone:
                 logger.error(f"Cannot trigger outbound call for lead {lead.id}: No phone number")
-                return
+                return False
 
             # Import here to avoid circular imports
             from models.call import Call
@@ -449,11 +513,12 @@ class WorkflowService:
                 asyncio.create_task(web_service.dispatch_call(call.id))
 
                 logger.info(f"Scheduled outbound call dispatch for call {call.id}, session {session_id}")
+                return True  # Success
 
             except Exception as e:
                 new_db.rollback()
                 logger.error(f"Error creating call record for session {session_id}: {str(e)}")
-                raise
+                return False  # Failed to create call record
             finally:
                 new_db.close()
 
@@ -461,6 +526,7 @@ class WorkflowService:
             logger.error(f"Error triggering outbound call for session {session_id}: {str(e)}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
+            return False  # Failed due to exception
 
     def _setup_follow_up_sequences(self, session: AgentSession, agent: Agent):
         """Set up follow-up sequences for the agent session based on agent workflow steps"""
