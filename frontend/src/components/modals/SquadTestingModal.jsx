@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Send, ArrowRight, Zap, MessageCircle, Terminal, ChevronDown, Network } from 'lucide-react'
-import { agentsAPI } from '../../lib/api'
+import api from '../../lib/api'
 
 // --- Constants ---
 
@@ -32,7 +32,7 @@ const SQUAD_SCENARIOS = [
     description: 'New customer books pest control service',
     messages: [
       "Hi, I need someone to come look at a termite problem",
-      "My name is James Rodriguez",
+      "My name is James Rodriguez, my number is 555-123-4567",
       "123 Oak Street, Springfield",
       "Yes, Thursday morning works great",
       "Yes, please book that slot"
@@ -44,7 +44,7 @@ const SQUAD_SCENARIOS = [
     icon: '😤',
     description: 'Unsatisfied customer triggers 2-exchange escalation',
     messages: [
-      "I'm calling about a service your technician did last week",
+      "I'm calling to complain about a service your technician did last week",
       "The treatment didn't work at all, I still have ants everywhere",
       "This is unacceptable, I want to speak to a manager"
     ]
@@ -59,52 +59,69 @@ const SQUAD_SCENARIOS = [
     ]
   },
   {
+    id: 'job_inquiry_flow',
+    name: 'Job Status Inquiry',
+    icon: '🔍',
+    description: 'Existing customer checks on their job status',
+    messages: [
+      "Hi, I want to check on the status of my existing pest control job",
+      "My name is Sarah Johnson, the address is 456 Elm Street"
+    ]
+  },
+  {
     id: 'intent_switch_midcall',
     name: 'Mid-Call Intent Switch',
     icon: '🔄',
     description: 'Caller switches from booking to complaint mid-call',
     messages: [
       "I need to schedule a follow-up treatment",
+      "My name is Tom, phone is 555-999-8888",
       "Actually wait, the last technician was really rude and I want to file a complaint"
     ]
   }
 ]
 
-// --- Handoff detection ---
+// --- Helper functions ---
 
-function detectHandoff(text, agents) {
-  // Look for handoff signals in LLM response
-  const handoffMatch = text.match(/\[HANDOFF:(\w+):(\{.*?\})\]/s)
-  if (handoffMatch) {
-    return { target: handoffMatch[1], context: tryParse(handoffMatch[2]) }
+function extractName(text) {
+  // Match patterns: "name is X", "I'm X", "this is X", "my name's X"
+  const patterns = [
+    /(?:my name is|name's|I'm|I am|this is|it's)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i,
+    /(?:call me)\s+([A-Za-z]+)/i,
+  ]
+  for (const p of patterns) {
+    const m = text.match(p)
+    if (m) return m[1].trim()
   }
+  return null
+}
 
-  // Heuristic: check if the response mentions transferring or handing off
-  const agentKeys = Object.keys(agents)
-  for (const key of agentKeys) {
-    const patterns = [
-      `hand off to ${key}`,
-      `transfer to ${key}`,
-      `handing off to ${agents[key].name?.toLowerCase()}`,
-      `connect you with ${agents[key].name?.toLowerCase()}`
-    ]
-    for (const p of patterns) {
-      if (text.toLowerCase().includes(p)) {
-        return { target: key, context: {} }
-      }
-    }
-  }
+function extractPhone(text) {
+  const m = text.match(/(\+?1?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/)
+  return m ? m[1] : null
+}
 
+function extractAddress(text) {
+  const m = text.match(/(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*(?:\s+(?:Street|St|Avenue|Ave|Drive|Dr|Road|Rd|Lane|Ln|Boulevard|Blvd|Way|Court|Ct|Circle|Cir))(?:,?\s*[A-Za-z\s]+)?)/i)
+  return m ? m[1] : null
+}
+
+function detectIntent(text) {
+  const lower = text.toLowerCase()
+  if (/billing|invoice|payment|charge|bill\b/i.test(lower)) return { intent: 'billing', confidence: 0.95 }
+  if (/complain|complaint|rude|unacceptable|terrible|awful|angry|frustrated|didn'?t work|speak to.*(manager|supervisor)/i.test(lower)) return { intent: 'complaint', confidence: 0.92 }
+  if (/status|existing|check on|follow.?up|my job|my service|last service|previous/i.test(lower)) return { intent: 'job_inquiry', confidence: 0.88 }
+  if (/schedule|book|appointment|need.*service|pest|termite|ant|roach|rodent|rat|mouse|bug|insect|spider|bee|wasp/i.test(lower)) return { intent: 'new_service', confidence: 0.90 }
   return null
 }
 
 function detectToolCall(text) {
   const toolPatterns = [
-    { pattern: /generate_appointment_slots|checking availability|let me check.*slots/i, tool: 'generate_appointment_slots' },
-    { pattern: /book_appointment|booking.*confirmed|appointment.*booked/i, tool: 'book_appointment' },
-    { pattern: /raise_callback|callback.*scheduled|manager.*call.*back/i, tool: 'raise_callback_request' },
-    { pattern: /confirm_lead|looking up.*job|checking.*records/i, tool: 'confirm_lead_details' },
-    { pattern: /transfer_to_team|transferring.*to|connecting.*with/i, tool: 'transfer_to_team' },
+    { pattern: /available.*slot|time slot|availability|checking.*schedule/i, tool: 'generate_appointment_slots' },
+    { pattern: /booked|confirmed|confirmation.*number|appointment.*set/i, tool: 'book_appointment' },
+    { pattern: /callback.*schedul|manager.*will.*call|we'?ll call you back/i, tool: 'raise_callback_request' },
+    { pattern: /looking up|found your|job.*number|your records|JOB-/i, tool: 'confirm_lead_details' },
+    { pattern: /transfer|connecting.*with|hold.*while|department/i, tool: 'transfer_to_team' },
   ]
   for (const { pattern, tool } of toolPatterns) {
     if (pattern.test(text)) return tool
@@ -112,21 +129,18 @@ function detectToolCall(text) {
   return null
 }
 
-function detectIntent(text) {
-  const lower = text.toLowerCase()
-  if (/billing|invoice|payment|charge|bill/i.test(lower)) return { intent: 'billing', confidence: 0.95 }
-  if (/complaint|complain|rude|unacceptable|manager|terrible|awful/i.test(lower)) return { intent: 'complaint', confidence: 0.92 }
-  if (/schedule|book|appointment|need.*service|pest|termite|ant|roach|rodent/i.test(lower)) return { intent: 'new_service', confidence: 0.90 }
-  if (/job|status|existing|follow.*up|check.*on|last.*service/i.test(lower)) return { intent: 'job_inquiry', confidence: 0.88 }
-  return null
-}
-
-function tryParse(str) {
-  try { return JSON.parse(str) } catch { return {} }
-}
-
 function timestamp() {
   return new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+function formatPrompt(prompt, context) {
+  let result = prompt
+  try {
+    result = result.replace(/\{customer_name\}/g, context.customer_name || 'Caller')
+    result = result.replace(/\{phone\}/g, context.phone || '')
+    result = result.replace(/\{address\}/g, context.address || '')
+  } catch {}
+  return result
 }
 
 // --- Component ---
@@ -142,6 +156,7 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
   const [selectedScenario, setSelectedScenario] = useState(null)
   const [scenarioStep, setScenarioStep] = useState(0)
   const [chatHistory, setChatHistory] = useState([])
+  const [pendingIntent, setPendingIntent] = useState(null) // track detected intent, handoff after router collects info
 
   const messagesEndRef = useRef(null)
   const logEndRef = useRef(null)
@@ -152,11 +167,8 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     ? agents.reduce((m, a) => ({ ...m, [a.key]: a }), {})
     : agents
 
-  // Initialize
   useEffect(() => {
-    if (isOpen) {
-      resetSession()
-    }
+    if (isOpen) resetSession()
   }, [isOpen])
 
   useEffect(() => {
@@ -175,6 +187,7 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     setScenarioStep(0)
     setSelectedScenario(null)
     setChatHistory([])
+    setPendingIntent(null)
     setMessages([])
     setOrchestrationLog([{
       time: timestamp(),
@@ -183,7 +196,6 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
       details: { shared_context: {} }
     }])
 
-    // Add greeting
     const greeting = "Hello, thank you for calling Torkin Pest Control. This is Mike, how can I help you today?"
     setMessages([{
       id: Date.now(),
@@ -199,9 +211,9 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     setOrchestrationLog(prev => [...prev, { time: timestamp(), type, message, details }])
   }
 
-  const executeHandoff = (targetKey, context, reason) => {
-    addLog('HANDOFF_TRIGGERED', `${agentsMap[currentAgentKey]?.name} → ${agentsMap[targetKey]?.name}`, {
-      from: currentAgentKey,
+  const executeHandoff = (fromKey, targetKey, context, reason) => {
+    addLog('HANDOFF_TRIGGERED', `${agentsMap[fromKey]?.name} → ${agentsMap[targetKey]?.name}`, {
+      from: fromKey,
       to: targetKey,
       context_passed: context,
       reason,
@@ -213,6 +225,7 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     setCurrentAgentKey(targetKey)
     setTurnCount(0)
     setChatHistory([]) // Clean slate
+    setPendingIntent(null)
 
     const targetAgent = agentsMap[targetKey]
     addLog('AGENT_ACTIVATED', `Agent: ${targetAgent?.name}`, {
@@ -220,13 +233,44 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
       prompt_preview: targetAgent?.prompt?.substring(0, 100) + '...'
     })
 
-    // Add handoff divider to messages
     setMessages(prev => [...prev, {
-      id: Date.now(),
-      text: `${agentsMap[currentAgentKey]?.name || currentAgentKey} → ${targetAgent?.name || targetKey}`,
+      id: Date.now() + 1,
+      text: `${agentsMap[fromKey]?.name || fromKey} → ${targetAgent?.name || targetKey}`,
       sender: 'handoff',
       timestamp: new Date()
     }])
+
+    return newContext
+  }
+
+  // Build conversation_history with current agent's prompt as system message
+  const buildApiPayload = (userMsg, agentKey, history, context) => {
+    const agent = agentsMap[agentKey]
+    const prompt = formatPrompt(agent?.prompt || '', context)
+
+    const conversation_history = [
+      { role: 'system', content: prompt }
+    ]
+
+    // Add context injection
+    if (Object.keys(context).length > 0) {
+      conversation_history.push({
+        role: 'system',
+        content: `Caller context: ${JSON.stringify(context)}`
+      })
+    }
+
+    // Add prior chat turns (within this agent only)
+    for (const msg of history) {
+      conversation_history.push(msg)
+    }
+
+    return {
+      message: userMsg,
+      conversation_history,
+      model: 'gpt-4o-mini',
+      temperature: 0.7
+    }
   }
 
   const handleSendMessage = async () => {
@@ -235,7 +279,7 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     const userMsg = inputMessage.trim()
     setInputMessage('')
 
-    // Add user message
+    // Add user message to UI
     setMessages(prev => [...prev, {
       id: Date.now(),
       text: userMsg,
@@ -243,138 +287,162 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
       timestamp: new Date()
     }])
 
-    const newHistory = [...chatHistory, { role: 'user', content: userMsg }]
-    setChatHistory(newHistory)
-    setTurnCount(prev => prev + 1)
+    const newTurn = turnCount + 1
+    setTurnCount(newTurn)
+    addLog('TURN_COUNT', `Turn ${newTurn}/${agentsMap[currentAgentKey]?.max_turns || 10} for ${agentsMap[currentAgentKey]?.name}`)
 
-    addLog('TURN_COUNT', `Turn ${turnCount + 1}/${agentsMap[currentAgentKey]?.max_turns || 10} for ${agentsMap[currentAgentKey]?.name}`)
+    // Extract info from user message (always, regardless of agent)
+    const extractedName = extractName(userMsg)
+    const extractedPhone = extractPhone(userMsg)
+    const extractedAddress = extractAddress(userMsg)
+    const updatedContext = { ...sharedContext }
+    if (extractedName) updatedContext.customer_name = extractedName
+    if (extractedPhone) updatedContext.phone = extractedPhone
+    if (extractedAddress) updatedContext.address = extractedAddress
+    if (Object.keys(updatedContext).length !== Object.keys(sharedContext).length ||
+        JSON.stringify(updatedContext) !== JSON.stringify(sharedContext)) {
+      setSharedContext(updatedContext)
+    }
 
-    // Check for deterministic billing route
+    // --- Router agent: detect intent + collect info before handoff ---
     if (currentAgentKey === 'router') {
       const intentResult = detectIntent(userMsg)
-      if (intentResult) {
+
+      // Check for deterministic billing route immediately
+      if (intentResult?.intent === 'billing') {
+        addLog('INTENT_CLASSIFIED', `intent: "billing"`, { confidence: 0.95 })
+        addLog('DETERMINISTIC_ROUTE', 'Billing detected — bypassing LLM, hard transfer', {
+          action: 'transfer_to_team', department: 'billing'
+        })
+
+        setMessages(prev => [...prev, {
+          id: Date.now() + 2,
+          text: "I'll connect you with our Billing & Accounts Team right away. Please hold — your reference number is REF-" +
+            Math.floor(1000 + Math.random() * 9000) + ". Estimated wait: 3-7 minutes.",
+          sender: 'agent',
+          agentKey: 'router',
+          timestamp: new Date(),
+          toolUsed: 'transfer_to_team'
+        }])
+        addLog('TOOL_CALLED', 'transfer_to_team', { department: 'billing', result: 'Hard transfer initiated' })
+        return
+      }
+
+      // Track intent
+      if (intentResult && !pendingIntent) {
+        setPendingIntent(intentResult)
         addLog('INTENT_CLASSIFIED', `intent: "${intentResult.intent}"`, { confidence: intentResult.confidence })
+      }
 
-        if (intentResult.intent === 'billing') {
-          addLog('DETERMINISTIC_ROUTE', 'Billing detected — bypassing LLM, hard transfer', {
-            action: 'transfer_to_team',
-            department: 'billing'
-          })
+      // Determine if we have enough info to hand off
+      const currentIntent = intentResult || pendingIntent
+      const hasName = !!updatedContext.customer_name
+      const readyToHandoff = currentIntent && (hasName || newTurn >= 3)
 
-          setMessages(prev => [...prev, {
-            id: Date.now(),
-            text: "I'll connect you with our Billing & Accounts Team right away. Please hold for a moment — your reference number is REF-" + Math.floor(1000 + Math.random() * 9000) + ". Estimated wait: 3-7 minutes.",
-            sender: 'agent',
-            agentKey: currentAgentKey,
-            timestamp: new Date(),
-            toolUsed: 'transfer_to_team'
-          }])
+      if (readyToHandoff) {
+        const intentToAgent = {
+          new_service: 'booking',
+          job_inquiry: 'job_inquiry',
+          complaint: 'complaint'
+        }
+        const targetKey = intentToAgent[currentIntent.intent]
 
-          addLog('TOOL_CALLED', 'transfer_to_team', { department: 'billing', result: 'Transfer initiated' })
+        if (targetKey && agentsMap[targetKey]) {
+          // Get LLM response as router first (transition message)
+          setIsTyping(true)
+          try {
+            const newHistory = [...chatHistory, { role: 'user', content: userMsg }]
+            const payload = buildApiPayload(userMsg, 'router', newHistory, updatedContext)
+            const response = await api.post('/api/agents/1/chat', payload)
+            const reply = response.data?.response || "Great, let me connect you with the right specialist."
+
+            setMessages(prev => [...prev, {
+              id: Date.now() + 3,
+              text: reply,
+              sender: 'agent',
+              agentKey: 'router',
+              timestamp: new Date()
+            }])
+          } catch {
+            setMessages(prev => [...prev, {
+              id: Date.now() + 3,
+              text: "Great, let me connect you with the right specialist to help with that.",
+              sender: 'agent',
+              agentKey: 'router',
+              timestamp: new Date()
+            }])
+          }
+          setIsTyping(false)
+
+          // Execute handoff
+          updatedContext.intent = currentIntent.intent
+          executeHandoff('router', targetKey, updatedContext, `Intent: ${currentIntent.intent}`)
           return
         }
       }
     }
 
-    // Call backend chat API
-    setIsTyping(true)
-    try {
-      const currentAgent = agentsMap[currentAgentKey]
-      const systemPrompt = currentAgent?.prompt || ''
-
-      // Format the prompt with context
-      let formattedPrompt = systemPrompt
-      try {
-        formattedPrompt = systemPrompt
-          .replace('{customer_name}', sharedContext.customer_name || 'Caller')
-      } catch {}
-
-      // Add context injection if we have shared context
-      let contextPrefix = ''
-      if (Object.keys(sharedContext).length > 0) {
-        contextPrefix = `Context from previous agent: ${JSON.stringify(sharedContext)}\n\n`
-      }
-
-      const response = await agentsAPI.test(1, userMsg)
-      let agentReply = response.data?.response || response.data?.message || "I'm sorry, could you repeat that?"
-
-      // Clean up any handoff signals from display text
-      const cleanReply = agentReply.replace(/\[HANDOFF:\w+:\{.*?\}\]/gs, '').trim()
-
-      // Detect tool usage
-      const toolUsed = detectToolCall(agentReply)
-      if (toolUsed) {
-        addLog('TOOL_CALLED', toolUsed, {
-          params: { context: 'auto-detected from response' },
-          result: 'Mock data returned'
-        })
-      }
-
-      // Check for handoff
-      if (currentAgentKey === 'router') {
-        const intentResult = detectIntent(userMsg)
-        if (intentResult) {
-          addLog('INTENT_CLASSIFIED', `intent: "${intentResult.intent}"`, { confidence: intentResult.confidence })
-
-          const intentToAgent = {
-            new_service: 'booking',
-            job_inquiry: 'job_inquiry',
-            complaint: 'complaint'
-          }
-          const targetKey = intentToAgent[intentResult.intent]
-          if (targetKey && agentsMap[targetKey]) {
-            // Extract name from conversation if mentioned
-            const nameMatch = userMsg.match(/(?:my name is|I'm|this is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i)
-            const ctx = {
-              intent: intentResult.intent,
-              ...(nameMatch ? { customer_name: nameMatch[1] } : {}),
-              ...(sharedContext)
-            }
-
-            // Show router's response first, then handoff
-            setMessages(prev => [...prev, {
-              id: Date.now(),
-              text: cleanReply || "Great, let me connect you with the right specialist.",
-              sender: 'agent',
-              agentKey: currentAgentKey,
-              timestamp: new Date()
-            }])
-
-            setTimeout(() => {
-              executeHandoff(targetKey, ctx, `Intent classified: ${intentResult.intent}`)
-            }, 500)
-
-            setIsTyping(false)
-            return
-          }
+    // --- Any non-router agent: check for intent mismatch / mid-call re-routing ---
+    if (currentAgentKey !== 'router') {
+      const intentResult = detectIntent(userMsg)
+      if (intentResult) {
+        const intentToAgent = {
+          new_service: 'booking',
+          job_inquiry: 'job_inquiry',
+          complaint: 'complaint',
         }
-      }
+        const correctAgent = intentToAgent[intentResult.intent]
 
-      // Check for mid-call intent switch (booking/job_inquiry -> complaint)
-      if (currentAgentKey !== 'router' && currentAgentKey !== 'complaint') {
-        const intentResult = detectIntent(userMsg)
-        if (intentResult?.intent === 'complaint') {
+        // Re-route if the detected intent maps to a DIFFERENT agent than current
+        if (correctAgent && correctAgent !== currentAgentKey) {
+          const currentAllowed = agentsMap[currentAgentKey]?.allowed_handoffs || []
+          // Check if direct handoff is allowed, otherwise go back through router
+          const targetKey = currentAllowed.includes(correctAgent) ? correctAgent : 'router'
+
+          addLog('INTENT_CLASSIFIED', `intent: "${intentResult.intent}" (mid-call re-route)`, { confidence: intentResult.confidence })
+
+          const transitionMessages = {
+            complaint: "I understand you'd like to address a concern. Let me connect you with someone who can help with that right away.",
+            job_inquiry: "It sounds like you'd like to check on an existing service. Let me get the right person to help you with that.",
+            booking: "Let me connect you with our scheduling team to help with that.",
+            router: "Let me get you to the right person for that."
+          }
+
           setMessages(prev => [...prev, {
-            id: Date.now(),
-            text: "I understand you'd like to discuss a concern. Let me connect you with someone who can help with that right away.",
+            id: Date.now() + 4,
+            text: transitionMessages[targetKey] || transitionMessages.router,
             sender: 'agent',
             agentKey: currentAgentKey,
             timestamp: new Date()
           }])
 
-          setTimeout(() => {
-            executeHandoff('complaint', { ...sharedContext, complaint_summary: userMsg }, 'Mid-call intent switch to complaint')
-          }, 500)
-
-          setIsTyping(false)
+          const handoffContext = { ...updatedContext, intent: intentResult.intent }
+          if (intentResult.intent === 'complaint') handoffContext.complaint_summary = userMsg
+          executeHandoff(currentAgentKey, targetKey, handoffContext, `Mid-call re-route: ${currentAgentKey} → ${targetKey} (intent: ${intentResult.intent})`)
           return
         }
       }
+    }
 
-      // Normal response
+    // --- Normal LLM call with current agent's prompt ---
+    setIsTyping(true)
+    try {
+      const newHistory = [...chatHistory, { role: 'user', content: userMsg }]
+      setChatHistory(newHistory)
+
+      const payload = buildApiPayload(userMsg, currentAgentKey, newHistory, updatedContext)
+      const response = await api.post('/api/agents/1/chat', payload)
+      let agentReply = response.data?.response || "I'm sorry, could you repeat that?"
+
+      // Detect tool usage from response
+      const toolUsed = detectToolCall(agentReply)
+      if (toolUsed) {
+        addLog('TOOL_CALLED', toolUsed, { result: 'Detected in response' })
+      }
+
       setMessages(prev => [...prev, {
-        id: Date.now(),
-        text: cleanReply,
+        id: Date.now() + 5,
+        text: agentReply,
         sender: 'agent',
         agentKey: currentAgentKey,
         timestamp: new Date(),
@@ -385,15 +453,14 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
 
     } catch (err) {
       console.error('Chat error:', err)
-      // Fallback response
       const fallbackResponses = {
-        router: "I'd be happy to help you with that. Could you tell me a bit more about what you need?",
+        router: "I'd be happy to help you with that. Could you tell me your name and what you're calling about?",
         booking: "I can help you book an appointment. What's the address for the service?",
-        job_inquiry: "Let me look that up for you. Can you provide your job number or address?",
-        complaint: "I'm truly sorry about your experience. Can you tell me more about what happened?"
+        job_inquiry: "Let me look that up for you. Can you provide your job number or the address on file?",
+        complaint: "I'm truly sorry about your experience. That's not the standard we hold ourselves to. Can you tell me more about what happened?"
       }
       setMessages(prev => [...prev, {
-        id: Date.now(),
+        id: Date.now() + 5,
         text: fallbackResponses[currentAgentKey] || "How can I assist you?",
         sender: 'agent',
         agentKey: currentAgentKey,
@@ -481,7 +548,6 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
                     </div>
                     <p className="text-[10px] text-gray-500 mb-1.5">{agent.key}</p>
 
-                    {/* Tools */}
                     {agent.tools?.length > 0 && (
                       <div className="flex flex-wrap gap-1 mb-1.5">
                         {agent.tools.map(t => (
@@ -492,7 +558,6 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
                       </div>
                     )}
 
-                    {/* Handoffs */}
                     {agent.allowed_handoffs?.length > 0 && (
                       <div className="flex items-center gap-1 text-[10px] text-gray-400">
                         <ArrowRight className="h-3 w-3" />
@@ -675,7 +740,6 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
               <div ref={logEndRef} />
             </div>
 
-            {/* Reset button */}
             <div className="p-3 border-t border-gray-700">
               <button
                 onClick={resetSession}
