@@ -21,6 +21,7 @@ const LOG_COLORS = {
   TURN_COUNT:          'text-gray-500',
   DETERMINISTIC_ROUTE: 'text-yellow-600',
   ESCALATION:          'text-red-600',
+  CONTEXT_UPDATE:      'text-teal-500',
   ERROR:               'text-red-500',
 }
 
@@ -81,68 +82,60 @@ const SQUAD_SCENARIOS = [
   }
 ]
 
-// --- Handoff instruction constants ---
+// --- LLM signal instructions ---
+// All context extraction and routing is done by the LLM via structured signals.
+// The frontend only parses these signals — no regex intent detection or data extraction.
+
+const CONTEXT_SIGNAL_INSTRUCTIONS = `
+
+CONTEXT TRACKING: You are responsible for extracting caller data. Whenever the caller provides their name, phone number, or address, you MUST include this signal on its own line at the end of your response (BEFORE any HANDOFF signal):
+
+[CONTEXT:name=<name>,phone=<phone>,address=<address>]
+
+RULES for CONTEXT:
+- Only include fields that were actually provided.
+- If the user says "Adi", include [CONTEXT:name=Adi]. 
+- If the user says "2 park street", include [CONTEXT:address=2 park street].
+- CRITICAL: Do not extract names from sentences describing feelings (e.g., "I am not getting support" does NOT mean the name is "Not Getting").
+- This signal is stripped from the display. The caller never sees it.`
 
 const ROUTER_HANDOFF_INSTRUCTIONS = `
 
-When you have identified the caller's intent and collected their name, respond naturally to the caller
-AND include this exact signal at the very end of your response on its own line:
+When you have identified the caller's intent AND have their name, respond naturally to the caller AND include this exact signal at the very end of your response on its own line:
 
-[HANDOFF:booking] — for new pest control service requests
-[HANDOFF:job_inquiry] — for checking on existing jobs, prior bookings, or past services
-[HANDOFF:complaint] — for complaints or dissatisfaction
-[HANDOFF:billing] — for billing/invoice/payment questions
+[HANDOFF:booking] — for new service requests
+[HANDOFF:job_inquiry] — for existing jobs or history
+[HANDOFF:complaint] — for complaints
+[HANDOFF:billing] — for billing/invoices
+[HANDOFF:escalation] — if they demand a human/manager immediately
 
-Do NOT hand off until you have the caller's name. If you're unsure of intent, ask a clarifying question.
-IMPORTANT: Do NOT say things like "let me transfer you" or "I'll connect you with someone."
-The caller should never know they're being routed. Just continue the conversation naturally.`
+Do NOT hand off until you have the name. If you're unsure of intent, ask a clarifying question.
+IMPORTANT: Do NOT say "one moment" or "let me transfer you". Just respond naturally and append the signal. The routing happens instantly in the background.`
 
 const AGENT_HANDOFF_INSTRUCTIONS = `
 
-If the caller changes their mind and wants something outside your specialty, respond naturally
-AND include this signal at the very end of your response:
+If the caller changes their mind, respond naturally AND include this signal at the very end:
 
-[HANDOFF:booking] — for new service requests
-[HANDOFF:job_inquiry] — for existing job lookups
-[HANDOFF:complaint] — for complaints
-[HANDOFF:billing] — for billing questions
-[HANDOFF:router] — if you're unsure where to send them
+[HANDOFF:booking] | [HANDOFF:job_inquiry] | [HANDOFF:complaint] | [HANDOFF:billing] | [HANDOFF:escalation]
 
-Only hand off if the caller EXPLICITLY asks for something different. Do not hand off based on casual mentions.
-IMPORTANT: Do NOT say "let me transfer you" or "I'll connect you with a specialist."
-The caller should never know agents are switching. Just respond naturally.`
+IMPORTANT: Do NOT say "one moment" or "let me look that up" unless you are actually providing results. If you are using a tool, the system will provide the data to you in the next turn.`
+
+const SIMULATED_TOOL_RESULTS = {
+  generate_appointment_slots: "SYSTEM: I found two openings: tomorrow at 9:00 AM or Friday at 1:00 PM with our senior tech, Dave.",
+  confirm_lead_details: "SYSTEM: I've located the account. There is an active pest control job (#T-992) at this address. The last technician was Marcus on Jan 15th.",
+  book_appointment: "SYSTEM: Success! The appointment is scheduled for tomorrow at 9:00 AM. Confirmation number is TORK-123.",
+  raise_callback_request: "SYSTEM: I have scheduled a priority callback from our area manager, Sarah. She will call this number within 2 hours.",
+  transfer_to_team: "SYSTEM: Connecting to the specialized department now."
+}
 
 // --- Helper functions ---
-
-function extractName(text) {
-  const patterns = [
-    /(?:my name is|name's|I'm|I am|this is|it's)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i,
-    /(?:call me)\s+([A-Za-z]+)/i,
-  ]
-  for (const p of patterns) {
-    const m = text.match(p)
-    if (m) return m[1].trim()
-  }
-  return null
-}
-
-function extractPhone(text) {
-  const m = text.match(/(\+?1?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/)
-  return m ? m[1] : null
-}
-
-function extractAddress(text) {
-  const m = text.match(/(\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*(?:\s+(?:Street|St|Avenue|Ave|Drive|Dr|Road|Rd|Lane|Ln|Boulevard|Blvd|Way|Court|Ct|Circle|Cir))(?:,?\s*[A-Za-z\s]+)?)/i)
-  return m ? m[1] : null
-}
 
 function detectToolCall(text) {
   const toolPatterns = [
     { pattern: /available.*slot|time slot|availability|checking.*schedule/i, tool: 'generate_appointment_slots' },
     { pattern: /booked|confirmed|confirmation.*number|appointment.*set/i, tool: 'book_appointment' },
     { pattern: /callback.*schedul|manager.*will.*call|we'?ll call you back/i, tool: 'raise_callback_request' },
-    { pattern: /looking up|found your|job.*number|your records|JOB-/i, tool: 'confirm_lead_details' },
-    { pattern: /transfer|connecting.*with|hold.*while|department/i, tool: 'transfer_to_team' },
+    { pattern: /looking up|found your|job.*number|your records|JOB-|locat.*account/i, tool: 'confirm_lead_details' },
   ]
   for (const { pattern, tool } of toolPatterns) {
     if (pattern.test(text)) return tool
@@ -150,10 +143,26 @@ function detectToolCall(text) {
   return null
 }
 
+function parseContextSignal(text) {
+  const match = text.match(/\[CONTEXT:([^\]]+)\]/)
+  if (!match) return { context: null, cleanText: text }
+  const context = {}
+  match[1].split(',').forEach(pair => {
+    const eqIdx = pair.indexOf('=')
+    if (eqIdx > 0) {
+      const key = pair.substring(0, eqIdx).trim()
+      const val = pair.substring(eqIdx + 1).trim()
+      if (val) context[key] = val
+    }
+  })
+  const cleanText = text.replace(/\n?\[CONTEXT:[^\]]+\]/g, '').trim()
+  return { context: Object.keys(context).length > 0 ? context : null, cleanText }
+}
+
 function parseHandoffSignal(text) {
-  const match = text.match(/\[HANDOFF:(booking|job_inquiry|complaint|billing|router)\]/)
+  const match = text.match(/\[HANDOFF:(booking|job_inquiry|complaint|billing|router|escalation)\]/)
   if (!match) return null
-  const cleanText = text.replace(/\n?\[HANDOFF:(?:booking|job_inquiry|complaint|billing|router)\].*$/s, '').trim()
+  const cleanText = text.replace(/\n?\[HANDOFF:(?:booking|job_inquiry|complaint|billing|router|escalation)\].*$/s, '').trim()
   return { target: match[1], cleanText }
 }
 
@@ -265,7 +274,8 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     const agent = agentsMap[agentKey]
     let prompt = formatPrompt(agent?.prompt || '', context)
 
-    // Append handoff instructions based on agent role
+    // Append LLM signal instructions
+    prompt += CONTEXT_SIGNAL_INSTRUCTIONS
     if (agentKey === 'router') {
       prompt += ROUTER_HANDOFF_INSTRUCTIONS
     } else {
@@ -276,7 +286,7 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
       { role: 'system', content: prompt }
     ]
 
-    // Natural language context injection instead of raw JSON
+    // Natural language context injection
     if (Object.keys(context).length > 0) {
       conversation_history.push({
         role: 'system',
@@ -319,32 +329,48 @@ Use this information naturally. Never re-ask for anything listed above.`
     setTurnCount(newTurn)
     addLog('TURN_COUNT', `Turn ${newTurn}/${agentsMap[currentAgentKey]?.max_turns || 10} for ${agentsMap[currentAgentKey]?.name}`)
 
-    // Extract info from user message
-    const extractedName = extractName(userMsg)
-    const extractedPhone = extractPhone(userMsg)
-    const extractedAddress = extractAddress(userMsg)
-    const updatedContext = { ...sharedContext }
-    if (extractedName) updatedContext.customer_name = extractedName
-    if (extractedPhone) updatedContext.phone = extractedPhone
-    if (extractedAddress) updatedContext.address = extractedAddress
-    if (JSON.stringify(updatedContext) !== JSON.stringify(sharedContext)) {
-      setSharedContext(updatedContext)
-    }
-
     // Call LLM with current agent's prompt
     setIsTyping(true)
     try {
       const newHistory = [...chatHistory, { role: 'user', content: userMsg }]
       setChatHistory(newHistory)
 
-      const payload = buildApiPayload(userMsg, currentAgentKey, newHistory, updatedContext)
+      const payload = buildApiPayload(userMsg, currentAgentKey, newHistory, sharedContext)
       const response = await api.post('/api/agents/1/chat', payload)
       let agentReply = response.data?.response || "I'm sorry, could you repeat that?"
 
-      // Check for handoff signal in response
-      const handoff = parseHandoffSignal(agentReply)
+      // 1. Parse and apply context signal (name/phone/address extracted by LLM)
+      const { context: llmContext, cleanText: afterContext } = parseContextSignal(agentReply)
+      let updatedContext = { ...sharedContext }
+      if (llmContext) {
+        if (llmContext.name) updatedContext.customer_name = llmContext.name
+        if (llmContext.phone) updatedContext.phone = llmContext.phone
+        if (llmContext.address) updatedContext.address = llmContext.address
+        setSharedContext(updatedContext)
+        addLog('CONTEXT_UPDATE', 'LLM extracted caller info', llmContext)
+      }
+
+      // 2. Parse handoff signal
+      const handoff = parseHandoffSignal(afterContext)
 
       if (handoff) {
+        // Escalation — caller wants a human
+        if (handoff.target === 'escalation') {
+          addLog('ESCALATION', 'Caller requested human agent', { from: currentAgentKey })
+
+          const displayText = handoff.cleanText || "I understand. Let me get a manager on the line for you right away."
+          setMessages(prev => [...prev, {
+            id: Date.now() + 2,
+            text: displayText,
+            sender: 'agent',
+            agentKey: currentAgentKey,
+            timestamp: new Date(),
+            toolUsed: 'raise_callback_request'
+          }])
+          addLog('TOOL_CALLED', 'raise_callback_request', { result: 'Escalation to human initiated' })
+          return
+        }
+
         // Deterministic billing hard transfer
         if (handoff.target === 'billing') {
           addLog('INTENT_CLASSIFIED', 'intent: "billing"', { source: 'LLM handoff signal' })
@@ -387,22 +413,63 @@ Use this information naturally. Never re-ask for anything listed above.`
         return
       }
 
-      // No handoff — normal response
-      const toolUsed = detectToolCall(agentReply)
-      if (toolUsed) {
-        addLog('TOOL_CALLED', toolUsed, { result: 'Detected in response' })
-      }
-
+      // 3. No handoff — normal response (use text with context signal stripped)
+      const displayReply = afterContext
+      const toolUsed = detectToolCall(displayReply)
+      
       setMessages(prev => [...prev, {
         id: Date.now() + 5,
-        text: agentReply,
+        text: displayReply,
         sender: 'agent',
         agentKey: currentAgentKey,
         timestamp: new Date(),
         toolUsed
       }])
 
-      setChatHistory(prev => [...prev, { role: 'assistant', content: agentReply }])
+      const updatedHistory = [...newHistory, { role: 'assistant', content: displayReply }]
+      setChatHistory(updatedHistory)
+
+      // 4. If a tool was used, simulate a result and trigger a follow-up response automatically
+      if (toolUsed && SIMULATED_TOOL_RESULTS[toolUsed]) {
+        const toolResult = SIMULATED_TOOL_RESULTS[toolUsed]
+        addLog('TOOL_CALLED', toolUsed, { result: 'Detected and simulated' })
+        
+        // Wait a beat, then send the system result to the LLM
+        setTimeout(async () => {
+          setIsTyping(true)
+          try {
+            const systemHistory = [...updatedHistory, { role: 'system', content: toolResult }]
+            setChatHistory(systemHistory)
+            
+            const followUpPayload = buildApiPayload("Please provide the results to the user.", currentAgentKey, systemHistory, updatedContext)
+            // Note: We use a special instruction as the "user" message for the follow-up
+            const followUpResponse = await api.post('/api/agents/1/chat', {
+              ...followUpPayload,
+              message: "Continue based on the system result provided."
+            })
+            
+            const followUpReply = followUpResponse.data?.response || ""
+            const { context: fContext, cleanText: fCleanText } = parseContextSignal(followUpReply)
+            
+            if (fContext) {
+              setSharedContext(prev => ({ ...prev, ...fContext }))
+            }
+            
+            setMessages(prev => [...prev, {
+              id: Date.now() + 10,
+              text: fCleanText,
+              sender: 'agent',
+              agentKey: currentAgentKey,
+              timestamp: new Date()
+            }])
+            setChatHistory(prev => [...prev, { role: 'assistant', content: fCleanText }])
+          } catch (err) {
+            console.error('Follow-up error:', err)
+          } finally {
+            setIsTyping(false)
+          }
+        }, 800)
+      }
 
     } catch (err) {
       console.error('Chat error:', err)
