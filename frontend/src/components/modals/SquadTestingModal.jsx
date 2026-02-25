@@ -314,28 +314,41 @@ Append the signal on a new line at the very end of your response. Do NOT say "le
 
 const JOB_INQUIRY_HANDOFF_INSTRUCTIONS = `
 
-ROUTING: You handle existing job lookups only. RULE: Always call confirm_lead_details FIRST before routing anywhere.
+ROUTING: You handle existing job lookups only. Always call confirm_lead_details first.
 
-After looking up the job, route if the caller's need changes:
+When caller's need changes, append ONE signal on its own line at the very end:
 
-[HANDOFF:booking]   — caller wants to schedule a NEW service appointment
-[HANDOFF:billing]   — caller asks about payment, invoices, or charges
-[HANDOFF:complaint] — caller expresses ANY dissatisfaction, unhappiness, or complaint about a past service or technician
+[HANDOFF:booking]   — new appointment needed
+[HANDOFF:billing]   — payment or invoice question
+[HANDOFF:complaint] — ANY unhappiness, complaint, or criticism about past service
 
-IMPORTANT: Do NOT use [HANDOFF:escalation] — send complaints to the complaint agent first.
-Do NOT route on the first turn before calling confirm_lead_details.
-Append the signal on a new line at the very end of your response. Do NOT say "let me transfer you". Routing is invisible.`
+CRITICAL RULES:
+- The [HANDOFF] signal IS the transfer. It is instant and invisible to the caller.
+- Do NOT say "one moment", "let me connect you", or "please hold" — just respond and append the signal.
+- Do NOT use [HANDOFF:escalation] — route complaints to complaint agent first.
+- Do NOT route before calling confirm_lead_details.
+
+EXAMPLE — caller says "I'm unhappy about the technician":
+  "I'm really sorry to hear that. I'll make sure this gets to our complaint team.
+  [HANDOFF:complaint]"
+
+EXAMPLE — caller says "can I book a new appointment":
+  "Of course! Let me get you over to booking.
+  [HANDOFF:booking]"`
 
 const COMPLAINT_HANDOFF_INSTRUCTIONS = `
 
-ROUTING: You handle complaints and service issues. If the caller's need changes, route immediately:
+ROUTING: You handle complaints. After 2 exchanges attempting resolution, or if caller demands a manager, escalate.
 
-[HANDOFF:booking]     — caller wants to schedule a new appointment
-[HANDOFF:job_inquiry] — caller wants to check on an existing job status
-[HANDOFF:billing]     — caller wants to dispute a charge or discuss billing
-[HANDOFF:escalation]  — caller explicitly demands a manager, supervisor, or human
+[HANDOFF:escalation]  — caller demands a manager, supervisor, or human agent
 
-Append the signal on a new line at the very end of your response. Do NOT say "let me transfer you". Routing is invisible.`
+CRITICAL RULES:
+- The [HANDOFF] signal IS the escalation. It is instant and invisible.
+- Do NOT say "one moment" or "please hold" — just respond and append the signal.
+
+EXAMPLE — caller says "I want to speak to a manager":
+  "I completely understand. Let me get our management team on the line for you right away.
+  [HANDOFF:escalation]"`
 
 function getHandoffInstructions(agentKey) {
   switch (agentKey) {
@@ -371,13 +384,25 @@ const SIMULATED_TOOL_RESULTS = {
 // HELPERS
 // =============================================================================
 
-function detectToolCall(text) {
-  const patterns = [
-    { pattern: /available.*slot|time slot|availability|checking.*schedule|let me check/i, tool: 'generate_appointment_slots' },
-    { pattern: /booked|confirmed|confirmation.*number|appointment.*set|I'?ve scheduled/i, tool: 'book_appointment' },
-    { pattern: /callback.*schedul|manager.*will.*call|we'?ll call you back|arrange.*callback/i, tool: 'raise_callback_request' },
-    { pattern: /looking up|found your|job.*number|your records|JOB-|locat.*account|let me.*check.*record|pull up/i, tool: 'confirm_lead_details' },
-  ]
+// Agent-aware tool detection — prevents false positives (e.g. job_inquiry agent
+// saying "let me check on that appointment" triggering generate_appointment_slots).
+// Each agent only matches tools it actually has access to.
+function detectToolCall(text, agentKey) {
+  const byAgent = {
+    booking: [
+      { pattern: /available.*slot|time slot|checking.*availab/i, tool: 'generate_appointment_slots' },
+      { pattern: /confirmed.*appoint|confirmation.*number|I'?ve (booked|scheduled)|confirm(?:ing)? (?:that )?(?:your )?booking|confirming.*appointment/i, tool: 'book_appointment' },
+      { pattern: /callback.*schedul|manager.*will.*call|we'?ll call you back/i, tool: 'raise_callback_request' },
+    ],
+    job_inquiry: [
+      { pattern: /look(?:ing)? up|checking.*(?:record|service|previous|old|history)|found.*(?:account|job)|job.*#|JOB-|pull up.*record/i, tool: 'confirm_lead_details' },
+    ],
+    complaint: [
+      { pattern: /callback.*schedul|manager.*will.*call|we'?ll call you back/i, tool: 'raise_callback_request' },
+    ],
+    router: [],
+  }
+  const patterns = byAgent[agentKey] || byAgent.booking
   for (const { pattern, tool } of patterns) {
     if (pattern.test(text)) return tool
   }
@@ -638,8 +663,8 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
 
       // --- No handoff: normal response ---
 
-      // Check for tool usage in response
-      const toolUsed = detectToolCall(agentReply)
+      // Agent-aware tool detection (prevents cross-agent false positives)
+      const toolUsed = detectToolCall(agentReply, currentAgentKey)
 
       setMessages(prev => [...prev, {
         id: Date.now() + 5, text: agentReply, sender: 'agent',
@@ -659,17 +684,69 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
           try {
             const sysHistory = [...updatedHistory, { role: 'system', content: toolResult }]
             setChatHistory(sysHistory)
-            const followUp = await api.post('/api/agents/1/chat', buildPayload("Present the tool results to the caller naturally.", currentAgentKey, sysHistory, coreData))
+            const followUp = await api.post('/api/agents/1/chat', buildPayload("Present the tool results to the caller naturally.", currentAgentKey, sysHistory, latestData))
             let reply = followUp.data?.response || ""
+            const ctxFollowUp = parseContextSignal(reply)
+            if (ctxFollowUp) { reply = ctxFollowUp.cleanText }
             const h = parseHandoffSignal(reply)
-            if (h) reply = h.cleanText
-            if (reply) {
+            if (h) {
+              // Handoff triggered from within tool follow-up
+              if (h.cleanText) {
+                setMessages(prev => [...prev, { id: Date.now() + 10, text: h.cleanText, sender: 'agent', agentKey: currentAgentKey, timestamp: new Date() }])
+                setChatHistory(prev => [...prev, { role: 'assistant', content: h.cleanText }])
+              }
+              const ud = { ...latestData, intent: h.target }
+              const { newData: nd, logs: hl } = runDerivations(ud)
+              hl.forEach(l => addLog(l.type, l.message, l.details))
+              setCoreData(nd)
+              executeHandoff(currentAgentKey, h.target, nd, `LLM routing: ${h.target}`)
+            } else if (reply) {
               setMessages(prev => [...prev, { id: Date.now() + 10, text: reply, sender: 'agent', agentKey: currentAgentKey, timestamp: new Date() }])
               setChatHistory(prev => [...prev, { role: 'assistant', content: reply }])
             }
           } catch (err) { console.error('Follow-up error:', err) }
           finally { setIsTyping(false) }
         }, 800)
+      } else {
+        // No tool — check for "wait" phrases (agent says "one moment" but takes no action).
+        // Auto-nudge the agent to complete the action so the user doesn't have to type "ok".
+        const waitPhrase = /one moment|please hold|just a moment|hold on.*moment/i
+        if (waitPhrase.test(agentReply)) {
+          setTimeout(async () => {
+            setIsTyping(true)
+            try {
+              const nudgeHistory = [...updatedHistory, { role: 'user', content: '[system: continue — complete the action now, do not make the caller wait]' }]
+              const nudge = await api.post('/api/agents/1/chat', buildPayload("Continue and complete the action you just described.", currentAgentKey, nudgeHistory, latestData))
+              let reply = nudge.data?.response || ""
+              const ctxNudge = parseContextSignal(reply)
+              if (ctxNudge) {
+                reply = ctxNudge.cleanText
+                const { newData: nd, logs } = runDerivations({ ...latestData, ...ctxNudge.updates })
+                logs.forEach(l => addLog(l.type, l.message, l.details))
+                setCoreData(nd)
+              }
+              const h = parseHandoffSignal(reply)
+              if (h) {
+                if (h.cleanText) {
+                  setMessages(prev => [...prev, { id: Date.now() + 20, text: h.cleanText, sender: 'agent', agentKey: currentAgentKey, timestamp: new Date() }])
+                  setChatHistory(prev => [...prev, { role: 'assistant', content: h.cleanText }])
+                }
+                const ud = { ...latestData, intent: h.target }
+                const { newData: nd, logs: hl } = runDerivations(ud)
+                hl.forEach(l => addLog(l.type, l.message, l.details))
+                setCoreData(nd)
+                executeHandoff(currentAgentKey, h.target, nd, `LLM routing: ${h.target}`)
+              } else {
+                const toolInNudge = detectToolCall(reply, currentAgentKey)
+                if (reply) {
+                  setMessages(prev => [...prev, { id: Date.now() + 20, text: reply, sender: 'agent', agentKey: currentAgentKey, timestamp: new Date(), toolUsed: toolInNudge || undefined }])
+                  setChatHistory(prev => [...prev, { role: 'assistant', content: reply }])
+                }
+              }
+            } catch (err) { console.error('Nudge error:', err) }
+            finally { setIsTyping(false) }
+          }, 600)
+        }
       }
 
     } catch (err) {
