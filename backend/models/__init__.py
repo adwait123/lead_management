@@ -8,6 +8,7 @@ from .business_profile import BusinessProfile, FAQ
 from .follow_up_task import FollowUpTask
 from .call import Call
 from .inbound_call import InboundCall
+from .squad import Squad
 from .database import Base, engine, SessionLocal
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "FollowUpTask",
     "Call",
     "InboundCall",
+    "Squad",
     "Base",
     "engine",
     "SessionLocal"

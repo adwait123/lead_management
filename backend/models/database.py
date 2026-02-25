@@ -41,5 +41,6 @@ def create_tables():
     from .follow_up_task import FollowUpTask
     from .call import Call
     from .inbound_call import InboundCall
+    from .squad import Squad
 
     Base.metadata.create_all(bind=engine)

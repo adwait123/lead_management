@@ -68,6 +68,14 @@ export const agentsAPI = {
   getByType: () => api.get('/api/agents/stats/by-type'),
 }
 
+export const squadsAPI = {
+  getAll: (params = {}) => api.get('/api/squads/', { params }),
+  getById: (id) => api.get(`/api/squads/${id}`),
+  create: (data) => api.post('/api/squads/', data),
+  update: (id, data) => api.put(`/api/squads/${id}`, data),
+  delete: (id) => api.delete(`/api/squads/${id}`),
+}
+
 export const workflowsAPI = {
   getAll: () => api.get('/api/workflows'),
   getById: (id) => api.get(`/api/workflows/${id}`),

@@ -9,7 +9,9 @@ export function AgentTestingModal({ isOpen, onClose, agentConfig, wizardData }) 
   const [isCallActive, setIsCallActive] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [selectedScenario, setSelectedScenario] = useState(null);
-  const [sidebarSection, setSidebarSection] = useState('prompt'); // 'prompt' or 'scenarios'
+  const [sidebarSection, setSidebarSection] = useState('prompt'); // 'prompt', 'scenarios', or 'tools'
+  const [toolTestResults, setToolTestResults] = useState({});
+  const [testingTools, setTestingTools] = useState({});
   const messagesEndRef = useRef(null);
   const callIntervalRef = useRef(null);
 
@@ -318,6 +320,109 @@ export function AgentTestingModal({ isOpen, onClose, agentConfig, wizardData }) 
     }, 100);
   };
 
+  // Tool testing functionality
+  const testAgentTool = async (toolName, parameters = {}) => {
+    setTestingTools(prev => ({ ...prev, [toolName]: true }));
+
+    try {
+      const response = await fetch(`https://lead-management-staging-backend.onrender.com/api/agents/1/test-tool`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tool_name: toolName,
+          parameters: parameters
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setToolTestResults(prev => ({
+          ...prev,
+          [toolName]: {
+            success: true,
+            result: data.result,
+            timestamp: new Date(),
+            parameters: parameters
+          }
+        }));
+      } else {
+        setToolTestResults(prev => ({
+          ...prev,
+          [toolName]: {
+            success: false,
+            error: data.error,
+            timestamp: new Date(),
+            parameters: parameters
+          }
+        }));
+      }
+    } catch (error) {
+      setToolTestResults(prev => ({
+        ...prev,
+        [toolName]: {
+          success: false,
+          error: error.message,
+          timestamp: new Date(),
+          parameters: parameters
+        }
+      }));
+    } finally {
+      setTestingTools(prev => ({ ...prev, [toolName]: false }));
+    }
+  };
+
+  // Available tools for testing
+  const availableTools = [
+    {
+      name: 'generate_appointment_slots',
+      label: 'Generate Appointment Slots',
+      description: 'Get available appointment times for pest control services',
+      icon: '📅',
+      defaultParams: {
+        address: '123 Main St, Anytown, ST 12345',
+        service_type: 'General Pest Control'
+      }
+    },
+    {
+      name: 'book_appointment',
+      label: 'Book Appointment',
+      description: 'Book a pest control service appointment',
+      icon: '✅',
+      defaultParams: {
+        slot_id: 'TPC-1030-0800AM',
+        day: 'Monday',
+        date: 'October 30',
+        time: '8:00 AM',
+        address: '123 Main St, Anytown, ST 12345'
+      }
+    },
+    {
+      name: 'raise_callback_request',
+      label: 'Request Callback',
+      description: 'Schedule a callback from the scheduling manager',
+      icon: '📞',
+      defaultParams: {
+        customer_phone: '(555) 123-4567',
+        preferred_time: '9:00 AM - 5:00 PM',
+        reason: 'No available appointment slots'
+      }
+    },
+    {
+      name: 'transfer_to_team',
+      label: 'Transfer to Team',
+      description: 'Transfer customer to a specialized team',
+      icon: '🔄',
+      defaultParams: {
+        department: 'sales',
+        reason: 'Customer needs pricing information',
+        customer_info: 'Interested in pest control services'
+      }
+    }
+  ];
+
   if (!isOpen) return null;
 
   return (
@@ -379,23 +484,33 @@ export function AgentTestingModal({ isOpen, onClose, agentConfig, wizardData }) 
               <div className="flex">
                 <button
                   onClick={() => setSidebarSection('prompt')}
-                  className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                  className={`flex-1 px-2 py-3 text-xs font-medium transition-colors ${
                     sidebarSection === 'prompt'
                       ? 'bg-white text-blue-600 border-b-2 border-blue-600'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
-                  📝 Prompt Preview
+                  📝 Prompt
                 </button>
                 <button
                   onClick={() => setSidebarSection('scenarios')}
-                  className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                  className={`flex-1 px-2 py-3 text-xs font-medium transition-colors ${
                     sidebarSection === 'scenarios'
                       ? 'bg-white text-blue-600 border-b-2 border-blue-600'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
-                  🎭 Test Scenarios
+                  🎭 Scenarios
+                </button>
+                <button
+                  onClick={() => setSidebarSection('tools')}
+                  className={`flex-1 px-2 py-3 text-xs font-medium transition-colors ${
+                    sidebarSection === 'tools'
+                      ? 'bg-white text-blue-600 border-b-2 border-blue-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  🔧 Tools
                 </button>
               </div>
             </div>
@@ -423,7 +538,7 @@ export function AgentTestingModal({ isOpen, onClose, agentConfig, wizardData }) 
                   )}
                 </div>
               </div>
-            ) : (
+            ) : sidebarSection === 'scenarios' ? (
               <div className="flex-1 flex flex-col">
                 <div className="p-4 border-b">
                   <h3 className="font-semibold text-gray-900 mb-2">Test Scenarios</h3>
@@ -449,6 +564,81 @@ export function AgentTestingModal({ isOpen, onClose, agentConfig, wizardData }) 
                       <p className="text-xs text-gray-500 italic">"{scenario.initialMessage}"</p>
                     </div>
                   ))}
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col">
+                <div className="p-4 border-b">
+                  <h3 className="font-semibold text-gray-900 mb-2">Agent Tools</h3>
+                  <p className="text-sm text-gray-600">Test your agent's function tools with dummy data</p>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {availableTools.map((tool) => {
+                    const isLoading = testingTools[tool.name];
+                    const result = toolTestResults[tool.name];
+
+                    return (
+                      <div key={tool.name} className="bg-white rounded-lg border p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center">
+                            <span className="text-lg mr-2">{tool.icon}</span>
+                            <div>
+                              <h4 className="font-medium text-gray-900 text-sm">{tool.label}</h4>
+                              <p className="text-xs text-gray-600">{tool.description}</p>
+                            </div>
+                          </div>
+                          <Button
+                            onClick={() => testAgentTool(tool.name, tool.defaultParams)}
+                            disabled={isLoading}
+                            size="sm"
+                            className="bg-blue-600 hover:bg-blue-700 text-xs px-3 py-1"
+                          >
+                            {isLoading ? 'Testing...' : 'Test Tool'}
+                          </Button>
+                        </div>
+
+                        {/* Test Result */}
+                        {result && (
+                          <div className="mt-3 p-3 bg-gray-50 rounded border">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className={`text-xs font-medium ${
+                                result.success ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                                {result.success ? '✓ Success' : '✗ Error'}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {result.timestamp.toLocaleTimeString()}
+                              </span>
+                            </div>
+
+                            {result.success ? (
+                              <div className="space-y-2">
+                                <div className="text-xs text-gray-700 font-mono bg-white p-2 rounded max-h-32 overflow-y-auto">
+                                  {typeof result.result === 'string' ? (
+                                    (() => {
+                                      try {
+                                        const parsed = JSON.parse(result.result);
+                                        return JSON.stringify(parsed, null, 2);
+                                      } catch {
+                                        return result.result;
+                                      }
+                                    })()
+                                  ) : (
+                                    JSON.stringify(result.result, null, 2)
+                                  )}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
+                                {result.error}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

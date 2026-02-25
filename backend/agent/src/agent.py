@@ -579,6 +579,525 @@ class Assistant(agents.Agent):
         return result_message
 
 
+class SquadOrchestrator(agents.Agent):
+    """
+    Orchestrates multiple sub-agents within a single LiveKit session.
+    Swaps instructions + tools when handoff is triggered.
+    The caller hears one continuous conversation — same voice, same session.
+    """
+
+    def __init__(self, room: rtc.Room, squad_config: dict, is_sip_session: bool = False) -> None:
+        self.squad_config = squad_config
+        self.agents_map = squad_config["agents"]  # dict keyed by agent key
+        self.current_agent_key = squad_config["entry_agent_key"]
+        self.shared_context = {}
+        self.turn_count = 0
+        self.total_handoffs = 0
+        self.max_total_handoffs = squad_config.get("routing_config", {}).get("max_total_handoffs", 5)
+
+        # Lead and call context from backend
+        lead_context = squad_config.get("lead_context", {})
+        call_context = squad_config.get("call_context", {})
+        self.lead_context = lead_context
+        self.call_context = call_context
+
+        # Model settings
+        model_name = squad_config.get("model", "gpt-4o-mini")
+        temperature = float(squad_config.get("temperature", 0.7))
+
+        # Build initial instructions from entry agent
+        entry_agent = self.agents_map[self.current_agent_key]
+        formatted_instructions = self._format_prompt(entry_agent["prompt"])
+
+        logger.info(f"SquadOrchestrator: starting with entry agent '{self.current_agent_key}'")
+
+        super().__init__(
+            instructions=formatted_instructions,
+            stt=deepgram.STT(
+                model="nova-2-phonecall",
+                language="en-US",
+                smart_format=True,
+                interim_results=True,
+                punctuate=True
+            ),
+            llm=openai.LLM(
+                model=model_name,
+                temperature=temperature
+            ),
+            tts=cartesia.TTS(
+                model="sonic-2-2025-03-07",
+                voice="146485fd-8736-41c7-88a8-7cdd0da34d84"
+            ),
+        )
+        self.room = room
+        self.is_sip_session = is_sip_session
+
+    def _format_prompt(self, prompt: str) -> str:
+        """Format prompt template with shared context and lead context"""
+        try:
+            return prompt.format(
+                customer_name=self.shared_context.get("customer_name",
+                    self.lead_context.get("first_name", "Caller")),
+                caller_phone=self.call_context.get("caller_phone", "Unknown"),
+                customer_phone=self.call_context.get("caller_phone", "Unknown"),
+                inbound_phone=self.call_context.get("inbound_phone", "+17622437375"),
+                service_requested=self.lead_context.get("service_requested", "General inquiry"),
+                lead_status=self.lead_context.get("status", "new"),
+                company=self.lead_context.get("company", ""),
+                interaction_history=""
+            )
+        except KeyError:
+            return prompt
+
+    async def on_enter(self):
+        logger.info(f"SquadOrchestrator on_enter: agent={self.current_agent_key}")
+
+        business_rules = fetching.fetch_business_rules()
+        chat_ctx = self.chat_ctx.copy()
+        chat_ctx.add_message(
+            role="system",
+            content=textwrap.dedent(f"""
+                Follow these business rules:
+                {business_rules}
+            """)
+        )
+        await self.update_chat_ctx(chat_ctx)
+
+        # Entry agent greeting
+        conversation_settings = self.squad_config.get("conversation_settings", {})
+        greeting_message = conversation_settings.get("greeting_message",
+            "Hello, thank you for calling Torkin Pest Control. This is Mike, how can I help you today?")
+
+        await self.session.generate_reply(
+            instructions=textwrap.dedent(f"""
+                Start the conversation immediately with: "{greeting_message}"
+                Wait for their response before proceeding.
+            """),
+            allow_interruptions=True
+        )
+
+    async def on_exit(self) -> None:
+        logger.info(f"SquadOrchestrator on_exit")
+        if self.session.userdata.consent_to_record:
+            await session.notify_session_end(self.session.userdata)
+
+    async def llm_node(
+        self, chat_ctx: agents.ChatContext, tools: list[agents.FunctionTool], model_settings: agents.ModelSettings
+    ):
+        # Filter tools based on current agent's allowed tools
+        current_agent = self.agents_map[self.current_agent_key]
+        allowed_tool_names = set(current_agent.get("tools", []))
+        # handoff_to_agent and save_consent_to_record are always available
+        allowed_tool_names.add("handoff_to_agent")
+        allowed_tool_names.add("save_consent_to_record")
+
+        active_tools = [t for t in tools if t.name in allowed_tool_names]
+
+        # Increment turn count
+        self.turn_count += 1
+
+        # Turn limit guard
+        max_turns = current_agent.get("max_turns", 10)
+        if self.turn_count > max_turns:
+            logger.warning(f"Turn limit ({max_turns}) exceeded for agent '{self.current_agent_key}'. Forcing handoff to router.")
+            # Force handoff back to router
+            await self._execute_handoff(
+                target_agent_key="router",
+                context_summary=self.shared_context,
+                reason=f"Turn limit exceeded for {self.current_agent_key}"
+            )
+
+        llm = cast(openai.LLM, self.llm)
+        tool_choice = model_settings.tool_choice if model_settings else agents.NOT_GIVEN
+        async with llm.chat(
+            chat_ctx=chat_ctx,
+            tools=active_tools,
+            tool_choice=tool_choice,
+            response_format=session.ResponseFormat,
+        ) as stream:
+            async for chunk in stream:
+                yield chunk
+
+    async def tts_node(self, text: AsyncIterable[str], model_settings: agents.ModelSettings):
+        return agents.Agent.default.tts_node(self, session.process_structured_output(text), model_settings)
+
+    async def _execute_handoff(self, target_agent_key: str, context_summary: dict, reason: str):
+        """Execute the actual agent handoff — swap instructions and rebuild context"""
+        if target_agent_key not in self.agents_map:
+            logger.error(f"Handoff target '{target_agent_key}' not found in squad agents")
+            return
+
+        logger.info(f"HANDOFF: {self.current_agent_key} -> {target_agent_key} | reason: {reason}")
+        logger.info(f"  Context passed: {context_summary}")
+
+        # Update shared context
+        if context_summary:
+            self.shared_context.update(context_summary)
+
+        # Switch agent
+        self.current_agent_key = target_agent_key
+        self.turn_count = 0
+        self.total_handoffs += 1
+
+        target_agent = self.agents_map[target_agent_key]
+
+        # Build clean chat context with new agent's prompt (clean slate)
+        new_prompt = self._format_prompt(target_agent["prompt"])
+        chat_ctx = self.chat_ctx.copy()
+
+        # Wipe prior conversation, inject new system prompt + structured context
+        chat_ctx = agents.ChatContext()
+        chat_ctx.add_message(role="system", content=new_prompt)
+
+        if self.shared_context:
+            context_str = json.dumps(self.shared_context, indent=2)
+            chat_ctx.add_message(
+                role="system",
+                content=f"Context from previous agent: {context_str}"
+            )
+
+        await self.update_chat_ctx(chat_ctx)
+        logger.info(f"AGENT ACTIVATED: {target_agent_key} | tools: {target_agent.get('tools', [])}")
+
+    @agents.function_tool()
+    async def handoff_to_agent(
+        self,
+        context: agents.RunContext,
+        target_agent_key: str,
+        context_summary: str,
+        reason: str,
+        reasoning_for_tool_call: str
+    ) -> str:
+        """
+        Hand off the conversation to another specialized agent.
+
+        Args:
+            target_agent_key (str): Which agent to hand off to (booking, job_inquiry, complaint, router).
+            context_summary (str): JSON string with structured variables to pass forward (customer_name, intent, phone, etc.).
+            reason (str): Why the handoff is happening.
+            reasoning_for_tool_call (str): The agent's reasoning for the tool call.
+
+        Returns:
+            str: Confirmation of the handoff.
+        """
+        # Validate target is in current agent's allowed_handoffs
+        current_agent = self.agents_map[self.current_agent_key]
+        allowed = current_agent.get("allowed_handoffs", [])
+
+        # Check for deterministic routes first
+        det_routes = current_agent.get("deterministic_routes", {})
+        if target_agent_key in det_routes:
+            route = det_routes[target_agent_key]
+            logger.info(f"DETERMINISTIC ROUTE: {target_agent_key} -> {route}")
+            # Execute the deterministic action directly
+            if route.get("action") == "transfer_to_team":
+                return await self.transfer_to_team(
+                    context=context,
+                    department=route["department"],
+                    reason=route.get("reason", reason),
+                    customer_info=context_summary,
+                    reasoning_for_tool_call=f"Deterministic route: {target_agent_key}"
+                )
+
+        if target_agent_key not in allowed:
+            return json.dumps({
+                "status": "error",
+                "message": f"Agent '{self.current_agent_key}' cannot hand off to '{target_agent_key}'. Allowed: {allowed}"
+            })
+
+        if self.total_handoffs >= self.max_total_handoffs:
+            return json.dumps({
+                "status": "error",
+                "message": f"Maximum handoffs ({self.max_total_handoffs}) reached. Cannot hand off further."
+            })
+
+        # Parse context_summary
+        try:
+            ctx_dict = json.loads(context_summary) if isinstance(context_summary, str) else context_summary
+        except (json.JSONDecodeError, TypeError):
+            ctx_dict = {"raw_context": context_summary}
+
+        await self._execute_handoff(target_agent_key, ctx_dict, reason)
+
+        target_name = self.agents_map[target_agent_key]["name"]
+        return json.dumps({
+            "status": "success",
+            "message": f"Handed off to {target_name}. Continue the conversation naturally without re-introducing yourself.",
+            "active_agent": target_agent_key
+        })
+
+    @agents.function_tool()
+    async def save_consent_to_record(self, context: agents.RunContext, consent_to_record: bool, reasoning_for_tool_call: str) -> str:
+        """
+        Save the user consent to record the conversation.
+
+        Args:
+            consent_to_record (bool): The user's consent to record the conversation.
+            reasoning_for_tool_call (str): The agent's reasoning for the tool call.
+
+        Returns:
+            str: success or failure.
+        """
+        self.session.userdata.consent_to_record = consent_to_record
+        return json.dumps({"status": "success"})
+
+    @agents.function_tool()
+    async def confirm_lead_details(self, context: agents.RunContext, reasoning_for_tool_call: str) -> str:
+        """
+        Look up existing job/lead details by customer name or address.
+
+        Args:
+            reasoning_for_tool_call (str): The agent's reasoning for the tool call.
+
+        Returns:
+            str: Job details including status, service type, and next visit.
+        """
+        import random
+        from datetime import datetime, timedelta
+
+        job_id = f"JOB-{random.randint(10000, 99999)}"
+        last_treatment = datetime.now() - timedelta(days=random.randint(14, 60))
+        next_visit = datetime.now() + timedelta(days=random.randint(7, 30))
+
+        lead_details = {
+            "job_id": job_id,
+            "address": self.shared_context.get("address", "123 Oak Street, Springfield, IL 62701"),
+            "service_type": random.choice(["General Pest Control", "Termite Treatment", "Rodent Control", "Ant Treatment"]),
+            "last_treatment_date": last_treatment.strftime("%B %d, %Y"),
+            "next_scheduled_visit": next_visit.strftime("%B %d, %Y"),
+            "technician": random.choice(["Tom Wilson", "Carlos Rodriguez", "Mike Thompson", "Sarah Davis"]),
+            "status": random.choice(["Active - Ongoing Treatment", "Active - Monitoring", "Scheduled Follow-up"]),
+            "notes": "All areas treated. Monitoring stations placed around perimeter."
+        }
+
+        return json.dumps({
+            "status": "success",
+            "lead_details": lead_details,
+            "message": f"Job {job_id}: {lead_details['service_type']} at {lead_details['address']}"
+        })
+
+    @agents.function_tool()
+    async def generate_appointment_slots(self, context: agents.RunContext, address: str, service_type: str, reasoning_for_tool_call: str) -> str:
+        """
+        Generate available appointment time slots for pest control service.
+
+        Args:
+            address (str): The customer's address for the service.
+            service_type (str): Type of pest control service (inspection, treatment, etc.).
+            reasoning_for_tool_call (str): The agent's reasoning for the tool call.
+
+        Returns:
+            str: Available appointment slots.
+        """
+        from datetime import datetime, timedelta
+        import random
+
+        today = datetime.now()
+        slots = []
+        current_date = today + timedelta(days=1)
+        slot_count = 0
+
+        while slot_count < 6:
+            if current_date.weekday() < 5:
+                day_name = current_date.strftime("%A")
+                date_str = current_date.strftime("%B %d")
+                time_options = ["8:00 AM", "10:00 AM", "11:30 AM", "1:00 PM", "2:30 PM", "4:00 PM"]
+                available_times = random.sample(time_options, random.randint(1, 3))
+
+                for time_slot in available_times:
+                    if slot_count < 6:
+                        slots.append({
+                            "day": day_name,
+                            "date": date_str,
+                            "time": time_slot,
+                            "slot_id": f"TPC-{current_date.strftime('%m%d')}-{time_slot.replace(':', '').replace(' ', '')}",
+                            "technician": random.choice(["Tom Wilson", "Carlos Rodriguez", "Mike Thompson", "Sarah Davis"]),
+                            "service_window": "2-hour window"
+                        })
+                        slot_count += 1
+
+            current_date += timedelta(days=1)
+
+        available_slots = slots[:5]
+
+        return json.dumps({
+            "status": "success",
+            "service_type": service_type,
+            "available_slots": available_slots,
+            "message": f"Found {len(available_slots)} available time slots for {service_type} service",
+            "notes": "All appointments include free inspection and quote"
+        })
+
+    @agents.function_tool()
+    async def book_appointment(self, context: agents.RunContext, slot_id: str, day: str, date: str, time: str, address: str, reasoning_for_tool_call: str) -> str:
+        """
+        Book the selected appointment slot for pest control service.
+
+        Args:
+            slot_id (str): Unique identifier for the selected appointment slot.
+            day (str): Day of the week for the appointment.
+            date (str): Date of the appointment.
+            time (str): Time of the appointment.
+            address (str): Customer's address for the service.
+            reasoning_for_tool_call (str): The agent's reasoning for the tool call.
+
+        Returns:
+            str: Appointment booking confirmation.
+        """
+        import random
+
+        appointment_id = f"TPC-{random.randint(10000, 99999)}"
+        technician_name = random.choice(["Tom Wilson", "Carlos Rodriguez", "Mike Thompson", "Sarah Davis", "Jennifer Martinez"])
+
+        booking_details = {
+            "appointment_id": appointment_id,
+            "confirmation_number": f"CONF-{random.randint(1000, 9999)}",
+            "day": day,
+            "date": date,
+            "time": time,
+            "service_window": "2-hour window",
+            "address": address,
+            "technician_name": technician_name,
+            "service_type": "Pest Control Service",
+            "estimated_duration": "1-3 hours depending on service",
+            "what_to_expect": "Free inspection, detailed quote, and treatment if approved",
+            "confirmation_sms": "Text confirmation sent within 10 minutes",
+            "phone_reminder": "Call reminder 24 hours before appointment",
+            "preparation_notes": "Please ensure access to all areas requiring inspection"
+        }
+
+        return json.dumps({
+            "status": "success",
+            "booking_details": booking_details,
+            "message": f"Pest control appointment successfully booked for {day}, {date} at {time}",
+            "next_steps": "You'll receive confirmation via text and email. Our technician will call 30 minutes before arrival."
+        })
+
+    @agents.function_tool()
+    async def raise_callback_request(self, context: agents.RunContext, customer_phone: str, preferred_time: str, reason: str, reasoning_for_tool_call: str) -> str:
+        """
+        Request a callback from the scheduling manager when no suitable appointment slots are available.
+
+        Args:
+            customer_phone (str): Customer's phone number for callback.
+            preferred_time (str): Customer's preferred callback time.
+            reason (str): Reason for callback (e.g., no available slots, emergency).
+            reasoning_for_tool_call (str): The agent's reasoning for the tool call.
+
+        Returns:
+            str: Callback request confirmation.
+        """
+        import random
+        from datetime import datetime, timedelta
+
+        callback_id = f"TCB-{random.randint(10000, 99999)}"
+
+        if "emergency" in reason.lower() or "urgent" in reason.lower():
+            callback_time = datetime.now() + timedelta(minutes=random.randint(15, 30))
+            priority = "urgent"
+        else:
+            callback_time = datetime.now() + timedelta(minutes=random.randint(30, 120))
+            priority = "standard"
+
+        manager_name = random.choice([
+            "Jennifer Adams - Scheduling Manager",
+            "Robert Martinez - Senior Coordinator",
+            "Susan Williams - Customer Success Manager",
+            "Michael Brown - Regional Manager"
+        ])
+
+        callback_details = {
+            "callback_id": callback_id,
+            "customer_phone": customer_phone,
+            "preferred_time": preferred_time,
+            "scheduled_callback_time": callback_time.strftime("%I:%M %p today"),
+            "manager_name": manager_name.split(" - ")[0],
+            "manager_title": manager_name.split(" - ")[1],
+            "reason": reason,
+            "status": "scheduled",
+            "priority": priority,
+            "reference_number": f"REF-{random.randint(1000, 9999)}",
+            "estimated_wait": "15-45 minutes" if priority == "urgent" else "30-90 minutes"
+        }
+
+        return json.dumps({
+            "status": "success",
+            "callback_details": callback_details,
+            "message": f"Priority callback scheduled with {callback_details['manager_name']} within {callback_details['estimated_wait']}",
+            "instructions": "Please keep your phone available. Our manager will call from a Torkin Pest Control number."
+        })
+
+    @agents.function_tool()
+    async def transfer_to_team(self, context: agents.RunContext, department: str, reason: str, customer_info: str, reasoning_for_tool_call: str) -> str:
+        """
+        Transfer the customer to a specialized team department for advanced assistance.
+
+        Args:
+            department (str): Target department (sales, technical, billing, management).
+            reason (str): Reason for transfer.
+            customer_info (str): Brief customer information for context.
+            reasoning_for_tool_call (str): The agent's reasoning for the tool call.
+
+        Returns:
+            str: Transfer confirmation details.
+        """
+        import random
+        from datetime import datetime
+
+        transfer_id = f"TXF-{random.randint(10000, 99999)}"
+
+        departments = {
+            "sales": {
+                "team_name": "Sales & Estimates Team",
+                "specialists": ["David Chen - Senior Sales Specialist", "Maria Rodriguez - Commercial Estimates Manager"],
+                "avg_wait": "2-5 minutes",
+                "specialty": "pricing, service packages, and contract negotiations"
+            },
+            "technical": {
+                "team_name": "Technical Support Team",
+                "specialists": ["Mark Wilson - Lead Technician Supervisor", "Lisa Park - IPM Specialist"],
+                "avg_wait": "1-3 minutes",
+                "specialty": "treatment methods, pest identification, and service issues"
+            },
+            "billing": {
+                "team_name": "Billing & Accounts Team",
+                "specialists": ["Robert Kim - Billing Specialist", "Jennifer Martinez - Accounts Manager"],
+                "avg_wait": "3-7 minutes",
+                "specialty": "payment processing, billing questions, and account management"
+            },
+            "management": {
+                "team_name": "Management Team",
+                "specialists": ["Patricia Anderson - Customer Success Manager", "Michael Taylor - Regional Operations Manager"],
+                "avg_wait": "5-10 minutes",
+                "specialty": "service complaints, escalations, and management decisions"
+            }
+        }
+
+        dept_info = departments.get(department.lower(), departments["management"])
+        assigned_specialist = random.choice(dept_info["specialists"])
+
+        transfer_details = {
+            "transfer_id": transfer_id,
+            "department": dept_info["team_name"],
+            "assigned_specialist": assigned_specialist.split(" - ")[0],
+            "specialist_title": assigned_specialist.split(" - ")[1],
+            "reason": reason,
+            "customer_summary": customer_info,
+            "estimated_wait": dept_info["avg_wait"],
+            "specialty_area": dept_info["specialty"],
+            "transfer_time": datetime.now().strftime("%I:%M %p"),
+            "priority": "high" if "urgent" in reason.lower() or "emergency" in reason.lower() else "standard",
+            "reference_number": f"REF-{random.randint(1000, 9999)}"
+        }
+
+        return json.dumps({
+            "status": "transferring",
+            "transfer_details": transfer_details,
+            "message": f"Transferring you to {transfer_details['assigned_specialist']} in our {transfer_details['department']}",
+            "instructions": f"Please hold while I connect you. Estimated wait time: {transfer_details['estimated_wait']}. Your reference number is {transfer_details['reference_number']}."
+        })
+
+
 async def entrypoint(ctx: agents.JobContext):
     # Initialize trace system first
     await tracing.init_trace_system()
@@ -666,9 +1185,16 @@ async def entrypoint(ctx: agents.JobContext):
         room_input_options = agents.RoomInputOptions(text_enabled=True, audio_enabled=False)
         room_output_options = agents.RoomOutputOptions(transcription_enabled=True, audio_enabled=False)
 
+    # Choose agent based on config mode
+    if agent_config.get("mode") == "squad":
+        logger.info(f"Squad mode detected: {agent_config.get('squad_name', 'Unknown Squad')}")
+        agent = SquadOrchestrator(room=ctx.room, squad_config=agent_config, is_sip_session=is_sip_session)
+    else:
+        agent = Assistant(room=ctx.room, agent_config=agent_config, is_sip_session=is_sip_session)
+
     await session_obj.start(
         room=ctx.room,
-        agent=Assistant(room=ctx.room, agent_config=agent_config, is_sip_session=is_sip_session),
+        agent=agent,
         room_input_options=room_input_options,
         room_output_options=room_output_options
     )

@@ -1,7 +1,7 @@
 """
 Agent model for AI Lead Management system
 """
-from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, Boolean, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -52,6 +52,10 @@ class Agent(Base):
 
     # Integration settings
     integrations = Column(JSON, nullable=True, default=list)  # Connected services/APIs
+
+    # Squad association (nullable — agent may or may not belong to a squad)
+    squad_id = Column(Integer, ForeignKey("squads.id"), nullable=True)
+    squad = relationship("Squad", backref="linked_agents")
 
     # Status and metadata
     is_active = Column(Boolean, default=True, nullable=False)

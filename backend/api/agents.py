@@ -512,3 +512,91 @@ async def get_openai_status():
         "available": get_openai_service().is_available(),
         "message": "OpenAI service is ready" if get_openai_service().is_available() else "OpenAI API key not configured"
     }
+
+# Tool Testing Endpoints
+
+class ToolTestRequest(BaseModel):
+    tool_name: str
+    parameters: Dict[str, Any]
+
+class ToolTestResponse(BaseModel):
+    result: Any
+    success: bool
+    error: Optional[str] = None
+
+@router.post("/{agent_id}/test-tool", response_model=ToolTestResponse)
+async def test_agent_tool(
+    agent_id: int,
+    tool_request: ToolTestRequest,
+    db: Session = Depends(get_db)
+):
+    """Test an agent's function tool with dummy data"""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    try:
+        # Import the agent class to get access to the function tools
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'agent', 'src'))
+
+        from agent import Assistant
+
+        # Create a mock assistant instance
+        assistant = Assistant()
+
+        # Call the appropriate tool based on tool_name
+        if tool_request.tool_name == "generate_appointment_slots":
+            result = await assistant.generate_appointment_slots(
+                context=None,  # Mock context
+                address=tool_request.parameters.get("address", "123 Main St, City, State"),
+                service_type=tool_request.parameters.get("service_type", "General Pest Control"),
+                reasoning_for_tool_call="Testing appointment tool"
+            )
+        elif tool_request.tool_name == "book_appointment":
+            result = await assistant.book_appointment(
+                context=None,  # Mock context
+                slot_id=tool_request.parameters.get("slot_id", "TPC-1030-0800AM"),
+                day=tool_request.parameters.get("day", "Monday"),
+                date=tool_request.parameters.get("date", "October 30"),
+                time=tool_request.parameters.get("time", "8:00 AM"),
+                address=tool_request.parameters.get("address", "123 Main St, City, State"),
+                reasoning_for_tool_call="Testing booking tool"
+            )
+        elif tool_request.tool_name == "raise_callback_request":
+            result = await assistant.raise_callback_request(
+                context=None,  # Mock context
+                customer_phone=tool_request.parameters.get("customer_phone", "(555) 123-4567"),
+                preferred_time=tool_request.parameters.get("preferred_time", "9:00 AM - 5:00 PM"),
+                reason=tool_request.parameters.get("reason", "No available appointment slots"),
+                reasoning_for_tool_call="Testing callback tool"
+            )
+        elif tool_request.tool_name == "transfer_to_team":
+            result = await assistant.transfer_to_team(
+                context=None,  # Mock context
+                department=tool_request.parameters.get("department", "sales"),
+                reason=tool_request.parameters.get("reason", "Customer needs pricing information"),
+                customer_info=tool_request.parameters.get("customer_info", "Interested in pest control services"),
+                reasoning_for_tool_call="Testing transfer tool"
+            )
+        else:
+            return ToolTestResponse(
+                result=None,
+                success=False,
+                error=f"Unknown tool: {tool_request.tool_name}"
+            )
+
+        return ToolTestResponse(
+            result=result,
+            success=True,
+            error=None
+        )
+
+    except Exception as e:
+        logger.error(f"Error testing tool {tool_request.tool_name}: {str(e)}")
+        return ToolTestResponse(
+            result=None,
+            success=False,
+            error=str(e)
+        )

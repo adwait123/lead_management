@@ -16,6 +16,7 @@ from models.database import get_db
 from models.inbound_call import InboundCall
 from models.lead import Lead
 from models.agent import Agent
+from models.squad import Squad
 from models.agent_session import AgentSession
 from models.message import Message
 from models.schemas import (
@@ -556,7 +557,54 @@ async def get_agent_config_for_call(call_id: int, db: Session = Depends(get_db))
     if inbound_call.lead_id:
         lead = db.query(Lead).filter(Lead.id == inbound_call.lead_id).first()
 
-    # Build agent configuration response
+    # Build lead and call context (shared between single-agent and squad modes)
+    lead_context = {
+        "lead_id": lead.id if lead else None,
+        "first_name": lead.first_name if lead else "Caller",
+        "last_name": lead.last_name if lead else "",
+        "phone": lead.phone if lead else inbound_call.caller_phone_number,
+        "company": lead.company if lead else None,
+        "service_requested": lead.service_requested if lead else "Phone inquiry",
+        "source": lead.source if lead else "phone_call",
+        "status": lead.status if lead else "new"
+    }
+
+    call_context = {
+        "caller_phone": inbound_call.caller_phone_number,
+        "inbound_phone": inbound_call.inbound_phone_number,
+        "call_status": inbound_call.call_status,
+        "room_name": inbound_call.room_name,
+        "received_at": inbound_call.received_at.isoformat() if inbound_call.received_at else None
+    }
+
+    # Check if this agent belongs to a squad
+    if agent.squad_id:
+        squad = db.query(Squad).filter(Squad.id == agent.squad_id).first()
+        if squad and squad.is_active:
+            # Build agents dict keyed by agent key
+            agents_dict = {}
+            for agent_def in (squad.agents or []):
+                agents_dict[agent_def["key"]] = agent_def
+
+            return {
+                "mode": "squad",
+                "squad_id": squad.id,
+                "squad_name": squad.name,
+                "entry_agent_key": squad.entry_agent_key,
+                "agents": agents_dict,
+                "routing_config": squad.routing_config or {},
+                "shared_context_schema": squad.shared_context_schema or {},
+                "lead_context": lead_context,
+                "call_context": call_context,
+                "call_id": call_id,
+                "agent_id": agent.id,
+                "model": "gpt-4o-mini",
+                "temperature": float(agent.temperature) if agent.temperature else 0.7,
+                "max_tokens": agent.max_tokens or 500,
+                "conversation_settings": agent.conversation_settings or {},
+            }
+
+    # Single-agent mode (backwards compatible)
     config = {
         "agent_id": agent.id,
         "agent_name": agent.name,
@@ -572,7 +620,7 @@ async def get_agent_config_for_call(call_id: int, db: Session = Depends(get_db))
         "response_length": agent.response_length or "moderate",
         "custom_personality_instructions": agent.custom_personality_instructions,
 
-        # AI model settings - always use gpt-4o-mini for structured outputs compatibility
+        # AI model settings
         "model": "gpt-4o-mini",
         "temperature": float(agent.temperature) if agent.temperature else 0.7,
         "max_tokens": agent.max_tokens or 500,
@@ -580,26 +628,8 @@ async def get_agent_config_for_call(call_id: int, db: Session = Depends(get_db))
         # Conversation settings
         "conversation_settings": agent.conversation_settings or {},
 
-        # Lead context (if available)
-        "lead_context": {
-            "lead_id": lead.id if lead else None,
-            "first_name": lead.first_name if lead else "Caller",
-            "last_name": lead.last_name if lead else "",
-            "phone": lead.phone if lead else inbound_call.caller_phone_number,
-            "company": lead.company if lead else None,
-            "service_requested": lead.service_requested if lead else "Phone inquiry",
-            "source": lead.source if lead else "phone_call",
-            "status": lead.status if lead else "new"
-        },
-
-        # Call context
-        "call_context": {
-            "caller_phone": inbound_call.caller_phone_number,
-            "inbound_phone": inbound_call.inbound_phone_number,
-            "call_status": inbound_call.call_status,
-            "room_name": inbound_call.room_name,
-            "received_at": inbound_call.received_at.isoformat() if inbound_call.received_at else None
-        },
+        "lead_context": lead_context,
+        "call_context": call_context,
 
         # Business context
         "business_context": {

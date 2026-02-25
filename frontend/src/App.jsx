@@ -13,6 +13,7 @@ import { Billing } from './pages/Billing'
 import { HatchAgentWizard } from './components/wizard/HatchAgentWizard'
 import { HatchAgentConfigSimple } from './components/wizard/HatchAgentConfigSimple'
 import { HatchAgentEdit } from './components/wizard/HatchAgentEdit'
+import { Squads } from './pages/Squads'
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
         <Route path="/agents/new" element={<Layout><HatchAgentWizard /></Layout>} />
         <Route path="/agents/config" element={<Layout><HatchAgentConfigSimple /></Layout>} />
         <Route path="/agents/edit/:id" element={<Layout><HatchAgentEdit /></Layout>} />
+        <Route path="/squads" element={<Layout><Squads /></Layout>} />
         <Route path="/workflows" element={<Layout><Workflows /></Layout>} />
         <Route path="/integrations" element={<Layout><Integrations /></Layout>} />
         <Route path="/calendar" element={<Layout><Calendar /></Layout>} />
