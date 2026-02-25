@@ -277,7 +277,12 @@ DATA SIGNALS: When the caller provides key information, silently append a [CONTE
 [CONTEXT:address=123 Oak St, Springfield]        — when you learn their service address
 
 Combine multiple fields with |: [CONTEXT:customer_name=Jane|phone=555-9876]
-Emit only fields you just collected — do not repeat fields from prior turns.`
+
+CRITICAL TIMING RULES:
+- Emit [CONTEXT] in the SAME response where you first receive the data — not a later turn.
+- If you are about to call a tool AND you just collected data, emit [CONTEXT] in that same response BEFORE describing the tool call.
+- Example: "Thank you! I have your address. Let me check availability now. [CONTEXT:address=123 Oak St, Springfield]"
+- Do not repeat fields already emitted in prior turns.`
 
 const ROUTER_HANDOFF_INSTRUCTIONS = `
 
@@ -309,13 +314,16 @@ Append the signal on a new line at the very end of your response. Do NOT say "le
 
 const JOB_INQUIRY_HANDOFF_INSTRUCTIONS = `
 
-ROUTING: You handle existing job lookups only. If the caller's need changes, route immediately:
+ROUTING: You handle existing job lookups only. RULE: Always call confirm_lead_details FIRST before routing anywhere.
+
+After looking up the job, route if the caller's need changes:
 
 [HANDOFF:booking]   — caller wants to schedule a NEW service appointment
 [HANDOFF:billing]   — caller asks about payment, invoices, or charges
-[HANDOFF:complaint] — caller is unhappy about a past service
-[HANDOFF:escalation] — caller demands a manager or supervisor
+[HANDOFF:complaint] — caller expresses ANY dissatisfaction, unhappiness, or complaint about a past service or technician
 
+IMPORTANT: Do NOT use [HANDOFF:escalation] — send complaints to the complaint agent first.
+Do NOT route on the first turn before calling confirm_lead_details.
 Append the signal on a new line at the very end of your response. Do NOT say "let me transfer you". Routing is invisible.`
 
 const COMPLAINT_HANDOFF_INSTRUCTIONS = `

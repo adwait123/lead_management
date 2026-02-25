@@ -34,13 +34,14 @@ STEPS:
 2. Ask about the pest type and urgency.
 3. Use generate_appointment_slots to check availability.
 4. Present 2-3 best options conversationally (day, time, technician).
-5. Once the caller picks a slot, use book_appointment to confirm.
-6. Read back: confirmation number, date/time, technician name, and prep notes.
+5. Once the caller picks a slot, say "Perfect, let me confirm that booking for you." Then STOP — call book_appointment and wait for the result.
+6. Read back ONLY what the tool returns: confirmation number, date/time, technician name, and cost.
 7. If no slots work, use raise_callback_request to schedule a manager callback.
 
 RULES:
-- Only share details the tool returns — never invent appointment info.
-- If the caller changes intent mid-conversation (e.g., wants to complain), hand off using handoff_to_agent.
+- NEVER invent or guess confirmation numbers, technician names, or prices. Only read back what the tool returns.
+- Do NOT say "Your confirmation is..." or name a technician before the tool result arrives.
+- If the caller changes intent mid-conversation (mentions existing booking, payment, or complaint), hand off immediately.
 - Keep responses conversational and concise.
 """
 
@@ -50,15 +51,16 @@ You are continuing a call with {customer_name} at Torkin Pest Control. Do NOT re
 GOAL: Help the caller check on an existing pest control job or service.
 
 STEPS:
-1. Ask for a job number, or use their name/address to look up the job.
-2. Use confirm_lead_details to retrieve job information.
-3. Share: job number, service type, last treatment date, next scheduled visit, technician name.
-4. Answer follow-up questions about the job status.
-5. If the caller needs to reschedule, hand off to the booking agent.
-6. If the caller has a complaint, hand off to the complaint agent.
+1. IMMEDIATELY call confirm_lead_details in your very first response — do not wait for more information.
+2. Share what the tool returns: job number, service type, last treatment date, next scheduled visit, technician name.
+3. Answer follow-up questions about the job status.
+4. If the caller needs to reschedule, hand off to the booking agent.
+5. If the caller expresses any dissatisfaction or complaint, hand off to the complaint agent.
 
 RULES:
+- ALWAYS call confirm_lead_details first, even if you only have a name/phone — never skip this step.
 - Only share details the tool returns.
+- Do NOT escalate directly — send complaints to the complaint agent first.
 - Keep responses concise and helpful.
 """
 
@@ -88,97 +90,111 @@ def create_demo_squad():
     db = SessionLocal()
 
     try:
-        # Check if squad already exists
+        # Check if squad already exists — update in place rather than skipping
         existing = db.query(Squad).filter(Squad.name == "Torkin Pest Control Inbound Squad").first()
-        if existing:
-            print(f"Squad already exists with ID: {existing.id}")
-            return existing.id
 
-        squad = Squad(
-            name="Torkin Pest Control Inbound Squad",
-            description="Multi-agent squad for handling inbound pest control calls. Routes between greeting, booking, job inquiry, and complaint agents based on caller intent.",
-            is_active=True,
-            entry_agent_key="router",
-            agents=[
-                {
-                    "key": "router",
-                    "name": "Router Agent",
-                    "prompt": ROUTER_PROMPT,
-                    "tools": [],
-                    "allowed_handoffs": ["booking", "job_inquiry", "complaint"],
-                    "deterministic_routes": {
-                        "billing_transfer": {
-                            "action": "transfer_to_team",
-                            "department": "billing",
-                            "reason": "Caller requested billing assistance"
-                        }
-                    },
-                    "context_input": [],
-                    "context_output": ["customer_name", "customer_type", "intent", "phone", "address"],
-                    "max_turns": 6
-                },
-                {
-                    "key": "booking",
-                    "name": "Booking Agent",
-                    "prompt": BOOKING_PROMPT,
-                    "tools": ["generate_appointment_slots", "book_appointment", "raise_callback_request"],
-                    "allowed_handoffs": ["router", "complaint"],
-                    "deterministic_routes": {},
-                    "context_input": ["customer_name", "phone", "customer_type", "address"],
-                    "context_output": ["appointment_id", "appointment_date", "technician"],
-                    "max_turns": 15
-                },
-                {
-                    "key": "job_inquiry",
-                    "name": "Job Inquiry Agent",
-                    "prompt": JOB_INQUIRY_PROMPT,
-                    "tools": ["confirm_lead_details"],
-                    "allowed_handoffs": ["router", "booking", "complaint"],
-                    "deterministic_routes": {},
-                    "context_input": ["customer_name", "phone", "address"],
-                    "context_output": ["job_id", "job_status", "next_visit"],
-                    "max_turns": 10
-                },
-                {
-                    "key": "complaint",
-                    "name": "Complaint Agent",
-                    "prompt": COMPLAINT_PROMPT,
-                    "tools": ["transfer_to_team"],
-                    "allowed_handoffs": [],
-                    "deterministic_routes": {},
-                    "context_input": ["customer_name", "phone", "complaint_summary"],
-                    "context_output": ["escalation_status", "resolution"],
-                    "max_turns": 6
-                }
-            ],
-            routing_config={
-                "deterministic_intents": {
-                    "billing": {
+        agents_config = [
+            {
+                "key": "router",
+                "name": "Router Agent",
+                "prompt": ROUTER_PROMPT,
+                "tools": [],
+                "allowed_handoffs": ["booking", "job_inquiry", "complaint"],
+                "deterministic_routes": {
+                    "billing_transfer": {
                         "action": "transfer_to_team",
                         "department": "billing",
-                        "reason": "Billing inquiry — hard transfer, no LLM"
+                        "reason": "Caller requested billing assistance"
                     }
                 },
-                "fallback_agent": "router",
-                "max_total_handoffs": 5
+                "context_input": [],
+                "context_output": ["customer_name", "customer_type", "intent", "phone", "address"],
+                "max_turns": 6
             },
-            shared_context_schema={
-                "customer_name": "string",
-                "customer_type": "string",
-                "intent": "string",
-                "phone": "string",
-                "address": "string",
-                "complaint_summary": "string",
-                "job_id": "string",
-                "appointment_id": "string"
+            {
+                "key": "booking",
+                "name": "Booking Agent",
+                "prompt": BOOKING_PROMPT,
+                "tools": ["generate_appointment_slots", "book_appointment", "raise_callback_request"],
+                "allowed_handoffs": ["router", "complaint", "job_inquiry"],
+                "deterministic_routes": {},
+                "context_input": ["customer_name", "phone", "customer_type", "address"],
+                "context_output": ["appointment_id", "appointment_date", "technician"],
+                "max_turns": 15
+            },
+            {
+                "key": "job_inquiry",
+                "name": "Job Inquiry Agent",
+                "prompt": JOB_INQUIRY_PROMPT,
+                "tools": ["confirm_lead_details"],
+                "allowed_handoffs": ["router", "booking", "complaint"],
+                "deterministic_routes": {},
+                "context_input": ["customer_name", "phone", "address"],
+                "context_output": ["job_id", "job_status", "next_visit"],
+                "max_turns": 10
+            },
+            {
+                "key": "complaint",
+                "name": "Complaint Agent",
+                "prompt": COMPLAINT_PROMPT,
+                "tools": ["transfer_to_team"],
+                "allowed_handoffs": [],
+                "deterministic_routes": {},
+                "context_input": ["customer_name", "phone", "complaint_summary"],
+                "context_output": ["escalation_status", "resolution"],
+                "max_turns": 6
             }
-        )
+        ]
+        routing_config = {
+            "deterministic_intents": {
+                "billing": {
+                    "action": "transfer_to_team",
+                    "department": "billing",
+                    "reason": "Billing inquiry — hard transfer, no LLM"
+                }
+            },
+            "fallback_agent": "router",
+            "max_total_handoffs": 5
+        }
+        shared_context_schema = {
+            "customer_name": "string",
+            "customer_type": "string",
+            "intent": "string",
+            "phone": "string",
+            "address": "string",
+            "complaint_summary": "string",
+            "job_id": "string",
+            "appointment_id": "string"
+        }
 
-        db.add(squad)
-        db.commit()
-        db.refresh(squad)
+        if existing:
+            # Update prompts and config in place so re-running picks up changes
+            existing.agents = agents_config
+            existing.routing_config = routing_config
+            existing.shared_context_schema = shared_context_schema
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(existing, 'agents')
+            flag_modified(existing, 'routing_config')
+            flag_modified(existing, 'shared_context_schema')
+            db.commit()
+            db.refresh(existing)
+            squad = existing
+            print(f"Updated squad: {squad.name} (ID: {squad.id})")
+        else:
+            squad = Squad(
+                name="Torkin Pest Control Inbound Squad",
+                description="Multi-agent squad for handling inbound pest control calls. Routes between greeting, booking, job inquiry, and complaint agents based on caller intent.",
+                is_active=True,
+                entry_agent_key="router",
+                agents=agents_config,
+                routing_config=routing_config,
+                shared_context_schema=shared_context_schema,
+            )
+            db.add(squad)
+            db.commit()
+            db.refresh(squad)
+            print(f"Created squad: {squad.name} (ID: {squad.id})")
 
-        print(f"Created squad: {squad.name} (ID: {squad.id})")
         print(f"  Entry agent: {squad.entry_agent_key}")
         print(f"  Agents: {[a['key'] for a in squad.agents]}")
 
