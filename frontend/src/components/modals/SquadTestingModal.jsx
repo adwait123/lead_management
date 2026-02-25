@@ -265,6 +265,20 @@ function buildConditionalSections(agentKey, data) {
 // Everything else (pricing, region, hours) is deterministic.
 // =============================================================================
 
+// Appended to ALL agents — instructs them to emit [CONTEXT] signals when they
+// collect key data. These are parsed client-side to populate coreData and run
+// deterministic derivations (region → pricing, phone validation, etc.)
+const CONTEXT_EXTRACTION_INSTRUCTIONS = `
+
+DATA SIGNALS: When the caller provides key information, silently append a [CONTEXT] signal at the very end of your response. The caller cannot see these.
+
+[CONTEXT:customer_name=John Smith]               — when you learn their name
+[CONTEXT:phone=555-123-4567]                     — when you learn their phone number
+[CONTEXT:address=123 Oak St, Springfield]        — when you learn their service address
+
+Combine multiple fields with |: [CONTEXT:customer_name=Jane|phone=555-9876]
+Emit only fields you just collected — do not repeat fields from prior turns.`
+
 const ROUTER_HANDOFF_INSTRUCTIONS = `
 
 ROUTING: When you know the caller's name and intent, respond naturally and append ONE of these signals on a new line at the very end:
@@ -280,13 +294,50 @@ RULES:
 - If intent is ambiguous, ask a clarifying question instead.
 - Do NOT say "let me transfer you" or "one moment". Routing is invisible to the caller.`
 
-const AGENT_HANDOFF_INSTRUCTIONS = `
+// Per-agent handoff instructions — explicit triggers prevent the LLM from
+// keeping calls in the wrong agent when intent changes mid-conversation.
+const BOOKING_HANDOFF_INSTRUCTIONS = `
 
-ROUTING: If the caller's request is outside your specialty, respond naturally and append a signal on a new line:
+ROUTING: You handle NEW service bookings only. If the caller's need changes, route immediately:
 
-[HANDOFF:booking] | [HANDOFF:job_inquiry] | [HANDOFF:complaint] | [HANDOFF:billing] | [HANDOFF:escalation]
+[HANDOFF:job_inquiry] — caller says they already have a booking/appointment/job scheduled, or wants to check on an existing job
+[HANDOFF:billing]     — caller asks about payment methods, invoices, cost disputes, or billing
+[HANDOFF:complaint]   — caller expresses dissatisfaction about a past service or technician
+[HANDOFF:escalation]  — caller demands a manager, supervisor, or human agent
 
-Only route when the caller clearly wants something different. Do NOT say "let me transfer you". Routing is invisible.`
+Append the signal on a new line at the very end of your response. Do NOT say "let me transfer you". Routing is invisible.`
+
+const JOB_INQUIRY_HANDOFF_INSTRUCTIONS = `
+
+ROUTING: You handle existing job lookups only. If the caller's need changes, route immediately:
+
+[HANDOFF:booking]   — caller wants to schedule a NEW service appointment
+[HANDOFF:billing]   — caller asks about payment, invoices, or charges
+[HANDOFF:complaint] — caller is unhappy about a past service
+[HANDOFF:escalation] — caller demands a manager or supervisor
+
+Append the signal on a new line at the very end of your response. Do NOT say "let me transfer you". Routing is invisible.`
+
+const COMPLAINT_HANDOFF_INSTRUCTIONS = `
+
+ROUTING: You handle complaints and service issues. If the caller's need changes, route immediately:
+
+[HANDOFF:booking]     — caller wants to schedule a new appointment
+[HANDOFF:job_inquiry] — caller wants to check on an existing job status
+[HANDOFF:billing]     — caller wants to dispute a charge or discuss billing
+[HANDOFF:escalation]  — caller explicitly demands a manager, supervisor, or human
+
+Append the signal on a new line at the very end of your response. Do NOT say "let me transfer you". Routing is invisible.`
+
+function getHandoffInstructions(agentKey) {
+  switch (agentKey) {
+    case 'router':     return ROUTER_HANDOFF_INSTRUCTIONS
+    case 'booking':    return BOOKING_HANDOFF_INSTRUCTIONS
+    case 'job_inquiry': return JOB_INQUIRY_HANDOFF_INSTRUCTIONS
+    case 'complaint':  return COMPLAINT_HANDOFF_INSTRUCTIONS
+    default:           return BOOKING_HANDOFF_INSTRUCTIONS
+  }
+}
 
 // Simulated tool results for demo
 const SIMULATED_TOOL_RESULTS = {
@@ -323,6 +374,24 @@ function detectToolCall(text) {
     if (pattern.test(text)) return tool
   }
   return null
+}
+
+// Parses [CONTEXT:field=value|field=value] emitted by agents to populate coreData.
+// Removes the signal from visible text — the caller never sees it.
+function parseContextSignal(text) {
+  const match = text.match(/\[CONTEXT:([^\]]+)\]/)
+  if (!match) return null
+  const updates = {}
+  for (const pair of match[1].split('|')) {
+    const eqIdx = pair.indexOf('=')
+    if (eqIdx > 0) {
+      const key = pair.slice(0, eqIdx).trim()
+      const val = pair.slice(eqIdx + 1).trim()
+      if (key && val) updates[key] = val
+    }
+  }
+  const cleanText = text.replace(/\s*\[CONTEXT:[^\]]+\]/g, '').trim()
+  return Object.keys(updates).length > 0 ? { updates, cleanText } : null
 }
 
 function parseHandoffSignal(text) {
@@ -431,8 +500,11 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     const agent = agentsMap[agentKey]
     let prompt = formatPrompt(agent?.prompt || '', data)
 
-    // Handoff instructions
-    prompt += agentKey === 'router' ? ROUTER_HANDOFF_INSTRUCTIONS : AGENT_HANDOFF_INSTRUCTIONS
+    // Per-agent handoff instructions (explicit triggers prevent misrouting)
+    prompt += getHandoffInstructions(agentKey)
+
+    // Context extraction instructions (feeds deterministic derivation pipeline)
+    prompt += CONTEXT_EXTRACTION_INSTRUCTIONS
 
     // Conditional prompt sections (Chrysalis)
     const { sections } = buildConditionalSections(agentKey, data)
@@ -483,6 +555,22 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
       const response = await api.post('/api/agents/1/chat', payload)
       let agentReply = response.data?.response || "I'm sorry, could you repeat that?"
 
+      // --- Parse and apply [CONTEXT] signals first (feeds deterministic pipeline) ---
+      let latestData = coreData
+      const ctx = parseContextSignal(agentReply)
+      if (ctx) {
+        agentReply = ctx.cleanText
+        const merged = { ...coreData, ...ctx.updates }
+        const { newData, logs } = runDerivations(merged)
+        logs.forEach(l => addLog(l.type, l.message, l.details))
+        if (logs.length > 0 || Object.keys(ctx.updates).length > 0) {
+          const updatedFields = Object.keys(ctx.updates).join(', ')
+          addLog('DERIVED_DATA', `Context collected: ${updatedFields}`, { source: '[CONTEXT] signal', updates: ctx.updates })
+        }
+        setCoreData(newData)
+        latestData = newData
+      }
+
       // --- Parse handoff signal ---
       const handoff = parseHandoffSignal(agentReply)
 
@@ -496,15 +584,15 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
           setMessages(prev => [...prev, { id: Date.now() + 2, text: msg, sender: 'agent', agentKey: currentAgentKey, timestamp: new Date(), toolUsed: 'raise_callback_request' }])
           setChatHistory(prev => [...prev, { role: 'assistant', content: msg }])
 
-          // Simulate callback tool
-          const toolResult = SIMULATED_TOOL_RESULTS.raise_callback_request(coreData)
+          // Simulate callback tool (use latestData for region-specific manager name)
+          const toolResult = SIMULATED_TOOL_RESULTS.raise_callback_request(latestData)
           addLog('TOOL_CALLED', 'raise_callback_request', { result: toolResult })
 
           setTimeout(async () => {
             setIsTyping(true)
             try {
               const sysHistory = [...newHistory, { role: 'assistant', content: msg }, { role: 'system', content: toolResult }]
-              const followUp = await api.post('/api/agents/1/chat', buildPayload("Relay the callback confirmation to the caller.", currentAgentKey, sysHistory, coreData))
+              const followUp = await api.post('/api/agents/1/chat', buildPayload("Relay the callback confirmation to the caller.", currentAgentKey, sysHistory, latestData))
               let reply = followUp.data?.response || "A manager will call you back within 2 hours."
               const h = parseHandoffSignal(reply)
               if (h) reply = h.cleanText
@@ -531,8 +619,8 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
           setChatHistory(prev => [...prev, { role: 'assistant', content: displayText }])
         }
 
-        const updatedData = { ...coreData, intent: handoff.target }
-        // Run derivations in case handoff context carries new data
+        // latestData already has [CONTEXT] updates applied; merge intent and re-derive
+        const updatedData = { ...latestData, intent: handoff.target }
         const { newData, logs } = runDerivations(updatedData)
         logs.forEach(l => addLog(l.type, l.message, l.details))
         setCoreData(newData)
@@ -552,10 +640,10 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
       const updatedHistory = [...newHistory, { role: 'assistant', content: agentReply }]
       setChatHistory(updatedHistory)
 
-      // Simulate tool result and follow-up
+      // Simulate tool result and follow-up (uses latestData for region-specific results)
       if (toolUsed && SIMULATED_TOOL_RESULTS[toolUsed]) {
         const toolResultFn = SIMULATED_TOOL_RESULTS[toolUsed]
-        const toolResult = typeof toolResultFn === 'function' ? toolResultFn(coreData) : toolResultFn
+        const toolResult = typeof toolResultFn === 'function' ? toolResultFn(latestData) : toolResultFn
         addLog('TOOL_CALLED', toolUsed, { result: 'Simulated with core data' })
 
         setTimeout(async () => {
@@ -588,9 +676,9 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     }
   }
 
-  // --- Core data update: called when LLM provides new info via [CONTEXT] or manually ---
-  // Not used directly anymore — core data is updated via runDerivations on handoff
-  // and via the shared chat history (LLM reads conversation, no extraction needed)
+  // Core data is updated in two places:
+  // 1. [CONTEXT] signals parsed from every agent response → runDerivations (address→region→pricing)
+  // 2. On handoff: intent merged in, runDerivations runs again with full context
 
   const handleScenarioSelect = (s) => { resetSession(); setSelectedScenario(s); setScenarioStep(0) }
   const handleScenarioStep = () => {
