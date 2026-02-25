@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, Send, ArrowRight, Zap, MessageCircle, Terminal, ChevronDown } from 'lucide-react'
+import { X, Send, ArrowRight, Zap, MessageCircle, Terminal, ChevronDown, Network } from 'lucide-react'
 import { agentsAPI } from '../../lib/api'
 
 // --- Constants ---
