@@ -157,6 +157,7 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
   const [scenarioStep, setScenarioStep] = useState(0)
   const [chatHistory, setChatHistory] = useState([])
   const [pendingIntent, setPendingIntent] = useState(null) // track detected intent, handoff after router collects info
+  const [turnsSinceHandoff, setTurnsSinceHandoff] = useState(999) // guard against re-routing too early after handoff
 
   const messagesEndRef = useRef(null)
   const logEndRef = useRef(null)
@@ -184,6 +185,7 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     setCurrentAgentKey(entryKey)
     setSharedContext({})
     setTurnCount(0)
+    setTurnsSinceHandoff(999)
     setScenarioStep(0)
     setSelectedScenario(null)
     setChatHistory([])
@@ -211,7 +213,7 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     setOrchestrationLog(prev => [...prev, { time: timestamp(), type, message, details }])
   }
 
-  const executeHandoff = (fromKey, targetKey, context, reason) => {
+  const executeHandoff = async (fromKey, targetKey, context, reason) => {
     addLog('HANDOFF_TRIGGERED', `${agentsMap[fromKey]?.name} → ${agentsMap[targetKey]?.name}`, {
       from: fromKey,
       to: targetKey,
@@ -224,6 +226,7 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     setSharedContext(newContext)
     setCurrentAgentKey(targetKey)
     setTurnCount(0)
+    setTurnsSinceHandoff(0)
     setChatHistory([]) // Clean slate
     setPendingIntent(null)
 
@@ -240,7 +243,49 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
       timestamp: new Date()
     }])
 
+    // Auto-generate first response from the new agent
+    setIsTyping(true)
+    try {
+      const introPrompt = `The caller has just been transferred to you. Greet them naturally (do NOT re-introduce yourself or say "thank you for calling") and continue the conversation based on the context provided. Be brief and get straight to helping them.`
+      const payload = buildApiPayload(introPrompt, targetKey, [], newContext)
+      const response = await api.post('/api/agents/1/chat', payload)
+      const reply = response.data?.response || getFallbackGreeting(targetKey, newContext)
+
+      const agentMsg = {
+        id: Date.now() + 10,
+        text: reply,
+        sender: 'agent',
+        agentKey: targetKey,
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev, agentMsg])
+      setChatHistory([{ role: 'assistant', content: reply }])
+    } catch {
+      const fallback = getFallbackGreeting(targetKey, newContext)
+      setMessages(prev => [...prev, {
+        id: Date.now() + 10,
+        text: fallback,
+        sender: 'agent',
+        agentKey: targetKey,
+        timestamp: new Date()
+      }])
+      setChatHistory([{ role: 'assistant', content: fallback }])
+    } finally {
+      setIsTyping(false)
+    }
+
     return newContext
+  }
+
+  const getFallbackGreeting = (agentKey, context) => {
+    const name = context.customer_name || ''
+    const greetings = {
+      booking: `Great${name ? `, ${name}` : ''}! I can help you schedule a pest control service. What's the address for the service?`,
+      job_inquiry: `Sure${name ? `, ${name}` : ''}! Let me look into your existing service. Can you give me your job number or the address on file?`,
+      complaint: `I'm sorry to hear you're having an issue${name ? `, ${name}` : ''}. I want to make sure we get this resolved. Can you tell me what happened?`,
+      router: `How can I help you today${name ? `, ${name}` : ''}?`
+    }
+    return greetings[agentKey] || greetings.router
   }
 
   // Build conversation_history with current agent's prompt as system message
@@ -289,6 +334,8 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
 
     const newTurn = turnCount + 1
     setTurnCount(newTurn)
+    const newTurnsSinceHandoff = turnsSinceHandoff + 1
+    setTurnsSinceHandoff(newTurnsSinceHandoff)
     addLog('TURN_COUNT', `Turn ${newTurn}/${agentsMap[currentAgentKey]?.max_turns || 10} for ${agentsMap[currentAgentKey]?.name}`)
 
     // Extract info from user message (always, regardless of agent)
@@ -376,16 +423,18 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
 
           // Execute handoff
           updatedContext.intent = currentIntent.intent
-          executeHandoff('router', targetKey, updatedContext, `Intent: ${currentIntent.intent}`)
+          await executeHandoff('router', targetKey, updatedContext, `Intent: ${currentIntent.intent}`)
           return
         }
       }
     }
 
     // --- Any non-router agent: check for intent mismatch / mid-call re-routing ---
-    if (currentAgentKey !== 'router') {
+    // Only re-route after the current agent has had at least 2 turns to engage,
+    // and only for strong/explicit intent signals (e.g., "I want to file a complaint")
+    if (currentAgentKey !== 'router' && newTurnsSinceHandoff >= 2) {
       const intentResult = detectIntent(userMsg)
-      if (intentResult) {
+      if (intentResult && intentResult.confidence >= 0.90) {
         const intentToAgent = {
           new_service: 'booking',
           job_inquiry: 'job_inquiry',
@@ -418,7 +467,7 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
 
           const handoffContext = { ...updatedContext, intent: intentResult.intent }
           if (intentResult.intent === 'complaint') handoffContext.complaint_summary = userMsg
-          executeHandoff(currentAgentKey, targetKey, handoffContext, `Mid-call re-route: ${currentAgentKey} → ${targetKey} (intent: ${intentResult.intent})`)
+          await executeHandoff(currentAgentKey, targetKey, handoffContext, `Mid-call re-route: ${currentAgentKey} → ${targetKey} (intent: ${intentResult.intent})`)
           return
         }
       }
