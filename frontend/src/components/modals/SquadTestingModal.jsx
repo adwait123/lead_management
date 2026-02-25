@@ -81,10 +81,40 @@ const SQUAD_SCENARIOS = [
   }
 ]
 
+// --- Handoff instruction constants ---
+
+const ROUTER_HANDOFF_INSTRUCTIONS = `
+
+When you have identified the caller's intent and collected their name, respond naturally to the caller
+AND include this exact signal at the very end of your response on its own line:
+
+[HANDOFF:booking] — for new pest control service requests
+[HANDOFF:job_inquiry] — for checking on existing jobs, prior bookings, or past services
+[HANDOFF:complaint] — for complaints or dissatisfaction
+[HANDOFF:billing] — for billing/invoice/payment questions
+
+Do NOT hand off until you have the caller's name. If you're unsure of intent, ask a clarifying question.
+IMPORTANT: Do NOT say things like "let me transfer you" or "I'll connect you with someone."
+The caller should never know they're being routed. Just continue the conversation naturally.`
+
+const AGENT_HANDOFF_INSTRUCTIONS = `
+
+If the caller changes their mind and wants something outside your specialty, respond naturally
+AND include this signal at the very end of your response:
+
+[HANDOFF:booking] — for new service requests
+[HANDOFF:job_inquiry] — for existing job lookups
+[HANDOFF:complaint] — for complaints
+[HANDOFF:billing] — for billing questions
+[HANDOFF:router] — if you're unsure where to send them
+
+Only hand off if the caller EXPLICITLY asks for something different. Do not hand off based on casual mentions.
+IMPORTANT: Do NOT say "let me transfer you" or "I'll connect you with a specialist."
+The caller should never know agents are switching. Just respond naturally.`
+
 // --- Helper functions ---
 
 function extractName(text) {
-  // Match patterns: "name is X", "I'm X", "this is X", "my name's X"
   const patterns = [
     /(?:my name is|name's|I'm|I am|this is|it's)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i,
     /(?:call me)\s+([A-Za-z]+)/i,
@@ -106,15 +136,6 @@ function extractAddress(text) {
   return m ? m[1] : null
 }
 
-function detectIntent(text) {
-  const lower = text.toLowerCase()
-  if (/billing|invoice|payment|charge|bill\b/i.test(lower)) return { intent: 'billing', confidence: 0.95 }
-  if (/complain|complaint|rude|unacceptable|terrible|awful|angry|frustrated|didn'?t work|speak to.*(manager|supervisor)/i.test(lower)) return { intent: 'complaint', confidence: 0.92 }
-  if (/status|existing|check on|follow.?up|my job|my service|last service|previous/i.test(lower)) return { intent: 'job_inquiry', confidence: 0.88 }
-  if (/schedule|book|appointment|need.*service|pest|termite|ant|roach|rodent|rat|mouse|bug|insect|spider|bee|wasp/i.test(lower)) return { intent: 'new_service', confidence: 0.90 }
-  return null
-}
-
 function detectToolCall(text) {
   const toolPatterns = [
     { pattern: /available.*slot|time slot|availability|checking.*schedule/i, tool: 'generate_appointment_slots' },
@@ -127,6 +148,13 @@ function detectToolCall(text) {
     if (pattern.test(text)) return tool
   }
   return null
+}
+
+function parseHandoffSignal(text) {
+  const match = text.match(/\[HANDOFF:(booking|job_inquiry|complaint|billing|router)\]/)
+  if (!match) return null
+  const cleanText = text.replace(/\n?\[HANDOFF:(?:booking|job_inquiry|complaint|billing|router)\].*$/s, '').trim()
+  return { target: match[1], cleanText }
 }
 
 function timestamp() {
@@ -156,8 +184,6 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
   const [selectedScenario, setSelectedScenario] = useState(null)
   const [scenarioStep, setScenarioStep] = useState(0)
   const [chatHistory, setChatHistory] = useState([])
-  const [pendingIntent, setPendingIntent] = useState(null) // track detected intent, handoff after router collects info
-  const [turnsSinceHandoff, setTurnsSinceHandoff] = useState(999) // guard against re-routing too early after handoff
 
   const messagesEndRef = useRef(null)
   const logEndRef = useRef(null)
@@ -185,11 +211,9 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     setCurrentAgentKey(entryKey)
     setSharedContext({})
     setTurnCount(0)
-    setTurnsSinceHandoff(999)
     setScenarioStep(0)
     setSelectedScenario(null)
     setChatHistory([])
-    setPendingIntent(null)
     setMessages([])
     setOrchestrationLog([{
       time: timestamp(),
@@ -213,7 +237,7 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     setOrchestrationLog(prev => [...prev, { time: timestamp(), type, message, details }])
   }
 
-  const executeHandoff = async (fromKey, targetKey, context, reason) => {
+  const executeHandoff = (fromKey, targetKey, context, reason) => {
     addLog('HANDOFF_TRIGGERED', `${agentsMap[fromKey]?.name} → ${agentsMap[targetKey]?.name}`, {
       from: fromKey,
       to: targetKey,
@@ -226,9 +250,7 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     setSharedContext(newContext)
     setCurrentAgentKey(targetKey)
     setTurnCount(0)
-    setTurnsSinceHandoff(0)
-    setChatHistory([]) // Clean slate
-    setPendingIntent(null)
+    setChatHistory([])
 
     const targetAgent = agentsMap[targetKey]
     addLog('AGENT_ACTIVATED', `Agent: ${targetAgent?.name}`, {
@@ -236,76 +258,37 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
       prompt_preview: targetAgent?.prompt?.substring(0, 100) + '...'
     })
 
-    setMessages(prev => [...prev, {
-      id: Date.now() + 1,
-      text: `${agentsMap[fromKey]?.name || fromKey} → ${targetAgent?.name || targetKey}`,
-      sender: 'handoff',
-      timestamp: new Date()
-    }])
-
-    // Auto-generate first response from the new agent
-    setIsTyping(true)
-    try {
-      const introPrompt = `The caller has just been transferred to you. Greet them naturally (do NOT re-introduce yourself or say "thank you for calling") and continue the conversation based on the context provided. Be brief and get straight to helping them.`
-      const payload = buildApiPayload(introPrompt, targetKey, [], newContext)
-      const response = await api.post('/api/agents/1/chat', payload)
-      const reply = response.data?.response || getFallbackGreeting(targetKey, newContext)
-
-      const agentMsg = {
-        id: Date.now() + 10,
-        text: reply,
-        sender: 'agent',
-        agentKey: targetKey,
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, agentMsg])
-      setChatHistory([{ role: 'assistant', content: reply }])
-    } catch {
-      const fallback = getFallbackGreeting(targetKey, newContext)
-      setMessages(prev => [...prev, {
-        id: Date.now() + 10,
-        text: fallback,
-        sender: 'agent',
-        agentKey: targetKey,
-        timestamp: new Date()
-      }])
-      setChatHistory([{ role: 'assistant', content: fallback }])
-    } finally {
-      setIsTyping(false)
-    }
-
     return newContext
   }
 
-  const getFallbackGreeting = (agentKey, context) => {
-    const name = context.customer_name || ''
-    const greetings = {
-      booking: `Great${name ? `, ${name}` : ''}! I can help you schedule a pest control service. What's the address for the service?`,
-      job_inquiry: `Sure${name ? `, ${name}` : ''}! Let me look into your existing service. Can you give me your job number or the address on file?`,
-      complaint: `I'm sorry to hear you're having an issue${name ? `, ${name}` : ''}. I want to make sure we get this resolved. Can you tell me what happened?`,
-      router: `How can I help you today${name ? `, ${name}` : ''}?`
-    }
-    return greetings[agentKey] || greetings.router
-  }
-
-  // Build conversation_history with current agent's prompt as system message
   const buildApiPayload = (userMsg, agentKey, history, context) => {
     const agent = agentsMap[agentKey]
-    const prompt = formatPrompt(agent?.prompt || '', context)
+    let prompt = formatPrompt(agent?.prompt || '', context)
+
+    // Append handoff instructions based on agent role
+    if (agentKey === 'router') {
+      prompt += ROUTER_HANDOFF_INSTRUCTIONS
+    } else {
+      prompt += AGENT_HANDOFF_INSTRUCTIONS
+    }
 
     const conversation_history = [
       { role: 'system', content: prompt }
     ]
 
-    // Add context injection
+    // Natural language context injection instead of raw JSON
     if (Object.keys(context).length > 0) {
       conversation_history.push({
         role: 'system',
-        content: `Caller context: ${JSON.stringify(context)}`
+        content: `IMPORTANT: The following has ALREADY been collected. Do NOT ask again:
+- Caller name: ${context.customer_name || 'not yet collected'}
+- Phone: ${context.phone || 'not yet collected'}
+- Address: ${context.address || 'not yet collected'}
+- Intent: ${context.intent || 'not yet determined'}
+Use this information naturally. Never re-ask for anything listed above.`
       })
     }
 
-    // Add prior chat turns (within this agent only)
     for (const msg of history) {
       conversation_history.push(msg)
     }
@@ -334,11 +317,9 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
 
     const newTurn = turnCount + 1
     setTurnCount(newTurn)
-    const newTurnsSinceHandoff = turnsSinceHandoff + 1
-    setTurnsSinceHandoff(newTurnsSinceHandoff)
     addLog('TURN_COUNT', `Turn ${newTurn}/${agentsMap[currentAgentKey]?.max_turns || 10} for ${agentsMap[currentAgentKey]?.name}`)
 
-    // Extract info from user message (always, regardless of agent)
+    // Extract info from user message
     const extractedName = extractName(userMsg)
     const extractedPhone = extractPhone(userMsg)
     const extractedAddress = extractAddress(userMsg)
@@ -346,134 +327,11 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     if (extractedName) updatedContext.customer_name = extractedName
     if (extractedPhone) updatedContext.phone = extractedPhone
     if (extractedAddress) updatedContext.address = extractedAddress
-    if (Object.keys(updatedContext).length !== Object.keys(sharedContext).length ||
-        JSON.stringify(updatedContext) !== JSON.stringify(sharedContext)) {
+    if (JSON.stringify(updatedContext) !== JSON.stringify(sharedContext)) {
       setSharedContext(updatedContext)
     }
 
-    // --- Router agent: detect intent + collect info before handoff ---
-    if (currentAgentKey === 'router') {
-      const intentResult = detectIntent(userMsg)
-
-      // Check for deterministic billing route immediately
-      if (intentResult?.intent === 'billing') {
-        addLog('INTENT_CLASSIFIED', `intent: "billing"`, { confidence: 0.95 })
-        addLog('DETERMINISTIC_ROUTE', 'Billing detected — bypassing LLM, hard transfer', {
-          action: 'transfer_to_team', department: 'billing'
-        })
-
-        setMessages(prev => [...prev, {
-          id: Date.now() + 2,
-          text: "I'll connect you with our Billing & Accounts Team right away. Please hold — your reference number is REF-" +
-            Math.floor(1000 + Math.random() * 9000) + ". Estimated wait: 3-7 minutes.",
-          sender: 'agent',
-          agentKey: 'router',
-          timestamp: new Date(),
-          toolUsed: 'transfer_to_team'
-        }])
-        addLog('TOOL_CALLED', 'transfer_to_team', { department: 'billing', result: 'Hard transfer initiated' })
-        return
-      }
-
-      // Track intent
-      if (intentResult && !pendingIntent) {
-        setPendingIntent(intentResult)
-        addLog('INTENT_CLASSIFIED', `intent: "${intentResult.intent}"`, { confidence: intentResult.confidence })
-      }
-
-      // Determine if we have enough info to hand off
-      const currentIntent = intentResult || pendingIntent
-      const hasName = !!updatedContext.customer_name
-      const readyToHandoff = currentIntent && (hasName || newTurn >= 3)
-
-      if (readyToHandoff) {
-        const intentToAgent = {
-          new_service: 'booking',
-          job_inquiry: 'job_inquiry',
-          complaint: 'complaint'
-        }
-        const targetKey = intentToAgent[currentIntent.intent]
-
-        if (targetKey && agentsMap[targetKey]) {
-          // Get LLM response as router first (transition message)
-          setIsTyping(true)
-          try {
-            const newHistory = [...chatHistory, { role: 'user', content: userMsg }]
-            const payload = buildApiPayload(userMsg, 'router', newHistory, updatedContext)
-            const response = await api.post('/api/agents/1/chat', payload)
-            const reply = response.data?.response || "Great, let me connect you with the right specialist."
-
-            setMessages(prev => [...prev, {
-              id: Date.now() + 3,
-              text: reply,
-              sender: 'agent',
-              agentKey: 'router',
-              timestamp: new Date()
-            }])
-          } catch {
-            setMessages(prev => [...prev, {
-              id: Date.now() + 3,
-              text: "Great, let me connect you with the right specialist to help with that.",
-              sender: 'agent',
-              agentKey: 'router',
-              timestamp: new Date()
-            }])
-          }
-          setIsTyping(false)
-
-          // Execute handoff
-          updatedContext.intent = currentIntent.intent
-          await executeHandoff('router', targetKey, updatedContext, `Intent: ${currentIntent.intent}`)
-          return
-        }
-      }
-    }
-
-    // --- Any non-router agent: check for intent mismatch / mid-call re-routing ---
-    // Only re-route after the current agent has had at least 2 turns to engage,
-    // and only for strong/explicit intent signals (e.g., "I want to file a complaint")
-    if (currentAgentKey !== 'router' && newTurnsSinceHandoff >= 2) {
-      const intentResult = detectIntent(userMsg)
-      if (intentResult && intentResult.confidence >= 0.90) {
-        const intentToAgent = {
-          new_service: 'booking',
-          job_inquiry: 'job_inquiry',
-          complaint: 'complaint',
-        }
-        const correctAgent = intentToAgent[intentResult.intent]
-
-        // Re-route if the detected intent maps to a DIFFERENT agent than current
-        if (correctAgent && correctAgent !== currentAgentKey) {
-          const currentAllowed = agentsMap[currentAgentKey]?.allowed_handoffs || []
-          // Check if direct handoff is allowed, otherwise go back through router
-          const targetKey = currentAllowed.includes(correctAgent) ? correctAgent : 'router'
-
-          addLog('INTENT_CLASSIFIED', `intent: "${intentResult.intent}" (mid-call re-route)`, { confidence: intentResult.confidence })
-
-          const transitionMessages = {
-            complaint: "I understand you'd like to address a concern. Let me connect you with someone who can help with that right away.",
-            job_inquiry: "It sounds like you'd like to check on an existing service. Let me get the right person to help you with that.",
-            booking: "Let me connect you with our scheduling team to help with that.",
-            router: "Let me get you to the right person for that."
-          }
-
-          setMessages(prev => [...prev, {
-            id: Date.now() + 4,
-            text: transitionMessages[targetKey] || transitionMessages.router,
-            sender: 'agent',
-            agentKey: currentAgentKey,
-            timestamp: new Date()
-          }])
-
-          const handoffContext = { ...updatedContext, intent: intentResult.intent }
-          if (intentResult.intent === 'complaint') handoffContext.complaint_summary = userMsg
-          await executeHandoff(currentAgentKey, targetKey, handoffContext, `Mid-call re-route: ${currentAgentKey} → ${targetKey} (intent: ${intentResult.intent})`)
-          return
-        }
-      }
-    }
-
-    // --- Normal LLM call with current agent's prompt ---
+    // Call LLM with current agent's prompt
     setIsTyping(true)
     try {
       const newHistory = [...chatHistory, { role: 'user', content: userMsg }]
@@ -483,7 +341,53 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
       const response = await api.post('/api/agents/1/chat', payload)
       let agentReply = response.data?.response || "I'm sorry, could you repeat that?"
 
-      // Detect tool usage from response
+      // Check for handoff signal in response
+      const handoff = parseHandoffSignal(agentReply)
+
+      if (handoff) {
+        // Deterministic billing hard transfer
+        if (handoff.target === 'billing') {
+          addLog('INTENT_CLASSIFIED', 'intent: "billing"', { source: 'LLM handoff signal' })
+          addLog('DETERMINISTIC_ROUTE', 'Billing detected — hard transfer', {
+            action: 'transfer_to_team', department: 'billing'
+          })
+
+          const billingMsg = handoff.cleanText ||
+            "I'll connect you with our Billing & Accounts Team right away. Please hold — your reference number is REF-" +
+            Math.floor(1000 + Math.random() * 9000) + ". Estimated wait: 3-7 minutes."
+
+          setMessages(prev => [...prev, {
+            id: Date.now() + 2,
+            text: billingMsg,
+            sender: 'agent',
+            agentKey: currentAgentKey,
+            timestamp: new Date(),
+            toolUsed: 'transfer_to_team'
+          }])
+          addLog('TOOL_CALLED', 'transfer_to_team', { department: 'billing', result: 'Hard transfer initiated' })
+          return
+        }
+
+        // LLM-driven handoff to another agent
+        const displayText = handoff.cleanText
+        addLog('INTENT_CLASSIFIED', `intent: "${handoff.target}" (LLM handoff signal)`, { from: currentAgentKey })
+
+        if (displayText) {
+          setMessages(prev => [...prev, {
+            id: Date.now() + 3,
+            text: displayText,
+            sender: 'agent',
+            agentKey: currentAgentKey,
+            timestamp: new Date()
+          }])
+        }
+
+        const handoffContext = { ...updatedContext, intent: handoff.target }
+        executeHandoff(currentAgentKey, handoff.target, handoffContext, `LLM handoff signal: ${currentAgentKey} → ${handoff.target}`)
+        return
+      }
+
+      // No handoff — normal response
       const toolUsed = detectToolCall(agentReply)
       if (toolUsed) {
         addLog('TOOL_CALLED', toolUsed, { result: 'Detected in response' })
@@ -674,20 +578,7 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {messages.map(msg => {
-                if (msg.sender === 'handoff') {
-                  return (
-                    <div key={msg.id} className="flex items-center gap-2 py-2">
-                      <div className="flex-1 h-px bg-gray-200"></div>
-                      <span className="text-xs text-gray-400 font-medium flex items-center gap-1">
-                        <ArrowRight className="h-3 w-3" /> {msg.text}
-                      </span>
-                      <div className="flex-1 h-px bg-gray-200"></div>
-                    </div>
-                  )
-                }
-
                 const isUser = msg.sender === 'user'
-                const agentColors = AGENT_COLORS[msg.agentKey] || DEFAULT_COLOR
 
                 return (
                   <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -696,11 +587,6 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
                         ? 'bg-blue-600 text-white rounded-lg rounded-br-none'
                         : 'bg-gray-100 text-gray-800 rounded-lg rounded-bl-none'
                     } px-4 py-2.5`}>
-                      {!isUser && msg.agentKey && (
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium mb-1 ${agentColors.bg} ${agentColors.text}`}>
-                          {agentsMap[msg.agentKey]?.name || msg.agentKey}
-                        </span>
-                      )}
                       <p className="text-sm">{msg.text}</p>
                       {msg.toolUsed && (
                         <div className="mt-1.5 flex items-center gap-1 text-[10px] opacity-70">
