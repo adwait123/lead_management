@@ -224,7 +224,7 @@ function buildConditionalSections(agentKey, data) {
 
   // After-hours mode (any agent)
   if (data.is_after_hours) {
-    sections.push(`[AFTER-HOURS MODE] It is currently outside business hours (Mon–Fri 8 AM–6 PM). You may take messages and schedule callbacks, but cannot confirm same-day appointments. Inform the caller a team member will follow up during business hours.`)
+    sections.push(`[AFTER-HOURS MODE] It is currently outside business hours (Mon–Fri 8 AM–6 PM). You CAN still book appointments for future dates (tomorrow onwards) — use generate_appointment_slots as normal and confirm the slot. You may NOT offer same-day or immediate service. If the caller needs urgent same-day help, use raise_callback_request so a team member calls them back during business hours.`)
     triggers.push('is_after_hours = true')
   }
 
@@ -280,9 +280,13 @@ Combine multiple fields with |: [CONTEXT:customer_name=Jane|phone=555-9876]
 
 CRITICAL TIMING RULES:
 - Emit [CONTEXT] in the SAME response where you first receive the data — not a later turn.
-- If you are about to call a tool AND you just collected data, emit [CONTEXT] in that same response BEFORE describing the tool call.
-- Example: "Thank you! I have your address. Let me check availability now. [CONTEXT:address=123 Oak St, Springfield]"
-- Do not repeat fields already emitted in prior turns.`
+- If you are about to call a tool AND you just collected data, emit [CONTEXT] in that same response.
+- Do not repeat fields already emitted in prior turns.
+
+EXAMPLES (follow these exactly):
+- Caller says "I'm James, my number is 555-1234" → end your response with: [CONTEXT:customer_name=James|phone=555-1234]
+- Caller says "123 Oak Street, Springfield" → end your response with: [CONTEXT:address=123 Oak Street, Springfield]
+- Caller says "I'm at 45 Palm Avenue, Ogdenville" → end your response with: [CONTEXT:address=45 Palm Avenue, Ogdenville]`
 
 const ROUTER_HANDOFF_INSTRUCTIONS = `
 
