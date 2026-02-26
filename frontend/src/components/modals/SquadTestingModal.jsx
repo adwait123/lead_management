@@ -413,6 +413,33 @@ function detectToolCall(text, agentKey) {
   return null
 }
 
+// Deterministic fallback: extract key fields from agent response text when
+// the LLM forgets to emit a [CONTEXT] signal. Catches agent confirmation phrases.
+function extractDataFromText(text, existingData) {
+  const updates = {}
+
+  // Address — agent typically confirms with "your address as/is/at X"
+  if (!existingData.address) {
+    const addrPatterns = [
+      /(?:your |the )?(?:service )?address\s+(?:is|as|at)\s+([0-9]+[^[\n.!?]{5,60})/i,
+      /noted?\s+(?:your\s+)?address\s+(?:as|at|is)\s+([0-9]+[^[\n.!?]{5,60})/i,
+      /I have\s+(?:your\s+)?address\s+(?:as|at|is)\s+([0-9]+[^[\n.!?]{5,60})/i,
+    ]
+    for (const p of addrPatterns) {
+      const m = text.match(p)
+      if (m) { updates.address = m[1].trim().replace(/[.,!?]+$/, ''); break }
+    }
+  }
+
+  // Name — agent greets confirmed name: "Thank you, John!" or "Got it, Jane."
+  if (!existingData.customer_name) {
+    const nameMatch = text.match(/(?:Thank you|Got it|Great|Perfect|Hi|Hello),\s+([A-Z][a-z]+)(?:[!.,]|$)/m)
+    if (nameMatch) updates.customer_name = nameMatch[1]
+  }
+
+  return Object.keys(updates).length > 0 ? updates : null
+}
+
 // Parses [CONTEXT:field=value|field=value] emitted by agents to populate coreData.
 // Removes the signal from visible text — the caller never sees it.
 function parseContextSignal(text) {
@@ -568,7 +595,7 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
     // Full chat history (shared across agents)
     for (const msg of history) conversation_history.push(msg)
 
-    return { message: userMsg, conversation_history, model: 'gpt-4o-mini', temperature: 0.7 }
+    return { message: userMsg, conversation_history, model: 'gpt-4o', temperature: 0.7 }
   }
 
   // --- Main send handler ---
@@ -603,6 +630,19 @@ export function SquadTestingModal({ isOpen, onClose, squad }) {
         if (logs.length > 0 || Object.keys(ctx.updates).length > 0) {
           const updatedFields = Object.keys(ctx.updates).join(', ')
           addLog('DERIVED_DATA', `Context collected: ${updatedFields}`, { source: '[CONTEXT] signal', updates: ctx.updates })
+        }
+        setCoreData(newData)
+        latestData = newData
+      }
+
+      // --- Deterministic fallback: extract data from agent text if [CONTEXT] was missed ---
+      const textExtracted = extractDataFromText(agentReply, latestData)
+      if (textExtracted) {
+        const merged = { ...latestData, ...textExtracted }
+        const { newData, logs } = runDerivations(merged)
+        logs.forEach(l => addLog(l.type, l.message, l.details))
+        if (Object.keys(textExtracted).length > 0) {
+          addLog('DERIVED_DATA', `Fallback extracted: ${Object.keys(textExtracted).join(', ')}`, { source: 'text pattern match', updates: textExtracted })
         }
         setCoreData(newData)
         latestData = newData
